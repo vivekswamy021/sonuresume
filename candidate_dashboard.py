@@ -6,19 +6,13 @@ import re
 import traceback
 from datetime import date
 # NOTE: The provided code relies on the presence of these libraries for file handling and core logic.
-# For full functionality, ensure the actual extraction, Groq setup, and utility functions 
-# (e.g., parse_and_store_resume, qa_on_resume, generate_interview_questions, etc.) 
-# are correctly initialized in your main application environment.
-# For this separate function, we will include the required local helper functions.
+# Ensure 'streamlit' is in your requirements.txt.
 
 # ==============================================================================
 # 1. DEPENDENCIES & HELPER FUNCTIONS (Stubs for demonstration)
-#    These are required by candidate_dashboard and are taken from the full code.
-#    NOTE: The Groq client dependency is assumed to be handled externally via 
-#    GROQ_API_KEY environment variable as per the original script structure.
 # ==============================================================================
 
-# --- Utility Functions (Essential for Tab functionality) ---
+# --- Utility Functions ---
 
 def go_to(page_name):
     """Changes the current page in Streamlit's session state."""
@@ -32,10 +26,6 @@ def clear_interview_state():
     st.toast("Practice answers cleared.")
 
 # --- External LLM/File Logic (Simplified or Stubbed for standalone copy) ---
-# NOTE: In a real environment, these would be the complex functions defined outside
-# the dashboard, relying on libraries like Groq, pdfplumber, docx, etc.
-
-# Options for LLM functions (needed for select boxes)
 question_section_options = ["skills","experience", "certifications", "projects", "education"]
 DEFAULT_JOB_TYPES = ["Full-time", "Contract", "Internship", "Remote", "Part-time"]
 DEFAULT_ROLES = ["Software Engineer", "Data Scientist", "Product Manager", "HR Manager", "Marketing Specialist", "Operations Analyst"]
@@ -43,56 +33,100 @@ DEFAULT_ROLES = ["Software Engineer", "Data Scientist", "Product Manager", "HR M
 # STUBS for functions that require the actual full application code or external APIs
 def extract_jd_from_linkedin_url(url: str) -> str:
     """Stub: Simulates JD content extraction."""
-    return f"Simulated JD Content for {url}"
+    return f"--- Simulated JD for: {url}\n\nJob Description content extracted from LinkedIn URL. This includes role details, requirements, and company information."
 
 def extract_jd_metadata(jd_text):
     """Stub: Simulates extraction of structured metadata."""
+    # Simple logic to return different data based on content to make the dashboard dynamic
+    if "Software Engineer" in jd_text:
+        return {"role": "Software Engineer", "job_type": "Full-time", "key_skills": ["Python", "Flask", "AWS", "SQL", "CI/CD"]}
+    elif "Data Scientist" in jd_text:
+        return {"role": "Data Scientist", "job_type": "Contract", "key_skills": ["Python", "Machine Learning", "TensorFlow", "Pandas", "Statistics"]}
     return {"role": "General Analyst", "job_type": "Full-time", "key_skills": ["Python", "SQL", "Cloud"]}
 
 def parse_and_store_resume(file_input, file_name_key='default', source_type='file'):
     """Stub: Simulates parsing and stores results into a structure."""
-    if st.session_state.get('parsed', {}).get('name'):
+    if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
          return {"parsed": st.session_state.parsed, "full_text": st.session_state.full_text, "excel_data": None, "name": st.session_state.parsed['name']}
     
-    return {"parsed": {"name": "Test Candidate", "skills": ["Python", "SQL"]}, "full_text": "Sample Resume Text", "excel_data": None, "name": "Test Candidate"}
+    # Placeholder data for a fresh parse
+    if source_type == 'file':
+        name_from_file = getattr(file_input, 'name', 'Uploaded_Resume').split('.')[0].replace('_', ' ')
+    else:
+        name_from_file = "Parsed Text CV"
+
+    parsed_data = {
+        "name": name_from_file, 
+        "email": "candidate@example.com", 
+        "phone": "555-123-4567",
+        "linkedin": "linkedin.com/in/candidate", 
+        "github": "github.com/candidate",
+        "skills": ["Python", "SQL", "Streamlit", "Data Analysis", "Git"], 
+        "experience": ["5 years at TechCorp as a Data Analyst, focusing on ETL and reporting."], 
+        "education": ["M.Sc. Computer Science, University of Excellence, 2018"], 
+        "certifications": ["AWS Certified Cloud Practitioner"], 
+        "projects": ["Built this Streamlit Dashboard"], 
+        "strength": ["Problem Solver", "Quick Learner"], 
+        "personal_details": "Highly motivated and results-oriented professional."
+    }
+    
+    # Create a placeholder full_text 
+    compiled_text = ""
+    for k, v in parsed_data.items():
+        if v:
+            compiled_text += f"{k.replace('_', ' ').title()}:\n"
+            if isinstance(v, list):
+                compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+            else:
+                compiled_text += str(v) + "\n\n"
+
+    return {"parsed": parsed_data, "full_text": compiled_text, "excel_data": None, "name": parsed_data['name']}
 
 def qa_on_resume(question):
     """Stub: Simulates Q&A on resume."""
-    return f"Based on the resume, the answer to '{question}' is: [Simulated Answer]"
+    if "skills" in question.lower():
+        return f"Based on the resume, the key skills are: {', '.join(st.session_state.parsed.get('skills', ['No skills found']))}. The candidate has a strong background in data tools."
+    return f"Based on the resume, the answer to '{question}' is: [Simulated Answer - Check experience/projects section for details]."
 
 def qa_on_jd(question, selected_jd_name):
     """Stub: Simulates Q&A on JD."""
-    return f"Based on the JD '{selected_jd_name}', the answer to '{question}' is: [Simulated Answer]"
+    return f"Based on the JD '{selected_jd_name}', the answer to '{question}' is: [Simulated Answer - The JD content specifies a 5+ years experience requirement and mandatory Python/SQL skills]."
 
 def evaluate_jd_fit(job_description, parsed_json):
     """Stub: Simulates JD fit evaluation."""
-    return f"""Overall Fit Score: 7/10
+    # Use random score for variation
+    import random
+    score = random.randint(5, 9)
+    skills = random.randint(60, 95)
+    experience = random.randint(50, 90)
+    
+    return f"""Overall Fit Score: {score}/10
 --- Section Match Analysis ---
-Skills Match: 75%
-Experience Match: 60%
+Skills Match: {skills}%
+Experience Match: {experience}%
 Education Match: 80%
 
 Strengths/Matches:
-- Strong Python skills match the JD requirement.
-- Relevant experience in a similar industry.
+- Candidate's Python and SQL skills ({skills}%) are an excellent match for this JD.
+- Experience ({experience}%) is relevant, though perhaps slightly under the ideal level.
 
 Gaps/Areas for Improvement:
-- Missing certification in cloud technologies.
-- Only 3 years of experience mentioned, while JD asks for 5+.
+- Needs more specific experience in the [Niche Technology] mentioned in the JD.
+- The resume summary could be tailored more closely to the [Specific Industry] focus of this role.
 
-Overall Summary: Good foundational fit, needs more depth in cloud and experience.
+Overall Summary: This is a **Strong** fit. Focus on experience in the interview.
 """
 
 def generate_interview_questions(parsed_json, section):
     """Stub: Simulates interview question generation."""
-    return f"""[Generic]
-Q1: Tell me about your experience related to your {section} section.
-Q2: What is your biggest strength?
-Q3: Why did you choose this field?
-[Difficult]
-Q1: Describe a time you faced a major challenge in your {section} work.
-Q2: How would you improve a key component in your previous project?
-Q3: What are the emerging trends in {section}?
+    return f"""[Behavioral]
+Q1: Tell me about a time you applied your strongest skill, **{parsed_json.get('skills', ['No skill'])[0]}**, to solve a major problem.
+Q2: Describe a project where your work in the **{section}** section directly led to a quantifiable business outcome.
+[Technical]
+Q3: How do you handle a scenario where a tool in your **{section}** section fails in production?
+Q4: What is the most challenging concept you learned in your **{section}** area?
+[General]
+Q5: Why are you looking to move from your current role/studies?
 """
 
 def evaluate_interview_answers(qa_list, parsed_json):
@@ -106,38 +140,69 @@ def evaluate_interview_answers(qa_list, parsed_json):
 ### Question {i+1}: {qa_item['question']}
 Score: 7/10
 Feedback:
-- **Clarity & Accuracy:** The answer directly addresses the question but could use more specific examples from the resume's experience section.
-- **Gaps & Improvements:** Focus on using the STAR method for behavioral questions. Reference a specific project in your answer.
+- **Clarity & Accuracy:** The answer for this question was good, addressing the core topic.
+- **Improvements:** Try to use the **STAR** (Situation, Task, Action, Result) method, especially for behavioral questions. Quantify your results.
 """)
         
     feedback_parts.append(f"""
 ---
 ## Final Assessment
 Total Score: {total_score}/{len(qa_list) * 10}
-Overall Summary: The candidate shows good fundamental knowledge but needs to better integrate their answers with the specific accomplishments listed in the resume. Practice using quantifiable results.
+Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects).
 """)
     
     return "\n".join(feedback_parts)
 
 def generate_cv_html(parsed_data):
     """Stub: Simulates CV HTML generation."""
-    return f"<html><body><h1>{parsed_data.get('name', 'CV Preview')}</h1><p>HTML content generated from parsed data.</p></body></html>"
+    skills_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('skills', [])])
+    return f"""
+    <html>
+    <head>
+        <title>{parsed_data.get('name', 'CV Preview')}</title>
+        <style>body{{font-family: Arial, sans-serif; margin: 40px;}} h1{{color: #2e6c80; border-bottom: 2px solid #2e6c80;}} h2{{color: #3d99b1;}} ul{{list-style-type: none; padding: 0;}}</style>
+    </head>
+    <body>
+        <h1>{parsed_data.get('name', 'CV Preview')}</h1>
+        <p>Email: {parsed_data.get('email', 'N/A')} | Phone: {parsed_data.get('phone', 'N/A')}</p>
+        <p>LinkedIn: <a href="{parsed_data.get('linkedin', '#')}">{parsed_data.get('linkedin', 'N/A')}</a></p>
+        
+        <h2>Key Skills</h2>
+        <ul>{skills_list}</ul>
+        
+        <h2>Experience</h2>
+        <p>{' | '.join(parsed_data.get('experience', ['No experience listed']))}</p>
+        
+        <h2>Education</h2>
+        <p>{' | '.join(parsed_data.get('education', ['No education listed']))}</p>
+        
+        <p>Generated by AI Dashboard on {date.today()}</p>
+    </body>
+    </html>
+    """
 
 def format_parsed_json_to_markdown(parsed_data):
     """Stub: Simulates CV Markdown generation."""
-    md = f"# **{parsed_data.get('name', 'CV Preview')}**\n\n"
+    md = f"# **{parsed_data.get('name', 'CV Preview').upper()}**\n"
+    md += f"**Contact:** {parsed_data.get('email', 'N/A')} | {parsed_data.get('phone', 'N/A')} | [LinkedIn]({parsed_data.get('linkedin', '#')})\n"
+    md += "\n"
+    md += f"## **SUMMARY**\n---\n"
+    md += parsed_data.get('personal_details', 'No summary provided.') + "\n\n"
     md += "## **SKILLS**\n---\n"
     md += "- " + "\n- ".join(parsed_data.get('skills', ['No skills listed']))
     md += "\n\n## **EXPERIENCE**\n---\n"
     md += "- " + "\n- ".join(parsed_data.get('experience', ['No experience listed']))
+    md += "\n\n## **EDUCATION**\n---\n"
+    md += "- " + "\n- ".join(parsed_data.get('education', ['No education listed']))
     return md
 
 # ==============================================================================
-# 2. CANDIDATE DASHBOARD FUNCTION (with necessary local helpers)
+# 2. TAB CONTENT FUNCTIONS
 # ==============================================================================
 
 def cv_management_tab_content():
-    """Renders the content for the 'CV Management' tab."""
+    # Content identical to the previous response's cv_management_tab_content
+    # ... (function body remains the same)
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("Fill out the details below to generate a parsed CV that can be used immediately for matching and interview prep, or start by parsing a file in the 'Resume Parsing' tab.")
@@ -150,7 +215,7 @@ def cv_management_tab_content():
     }
     
     if "cv_form_data" not in st.session_state:
-        if st.session_state.get('parsed', {}).get('name'):
+        if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
         else:
             st.session_state.cv_form_data = default_parsed
@@ -290,7 +355,7 @@ def cv_management_tab_content():
     st.markdown("---")
     st.subheader("2. Loaded CV Data Preview and Download")
     
-    if st.session_state.get('parsed', {}).get('name'):
+    if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
         filled_data_for_preview = {
             k: v for k, v in st.session_state.parsed.items() 
@@ -353,7 +418,8 @@ def cv_management_tab_content():
 
 
 def filter_jd_tab_content():
-    """Renders the content for the 'Filter JD' tab."""
+    # Content identical to the previous response's filter_jd_tab_content
+    # ... (function body remains the same)
     st.header("🔍 Filter Job Descriptions by Criteria")
     st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
 
@@ -484,11 +550,21 @@ def filter_jd_tab_content():
         st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
 
 
+# ==============================================================================
+# 3. MAIN CANDIDATE DASHBOARD FUNCTION
+# ==============================================================================
+
 def candidate_dashboard():
-    st.header("👩‍🎓 Candidate Dashboard")
+    st.set_page_config(
+        page_title="Candidate AI Dashboard",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    st.header("👩‍🎓 Candidate AI Dashboard")
     st.markdown("Welcome! Use the tabs below to manage your CV and access AI preparation tools.")
 
-    # --- Session State Initialization (Necessary for standalone execution) ---
+    # --- Session State Initialization (CRITICAL BLOCK) ---
     if 'page' not in st.session_state: st.session_state.page = "login"
     if 'parsed' not in st.session_state: st.session_state.parsed = {}
     if 'full_text' not in st.session_state: st.session_state.full_text = ""
@@ -515,42 +591,37 @@ def candidate_dashboard():
         st.session_state.filtered_jds_display = []
     if "last_selected_skills" not in st.session_state:
         st.session_state.last_selected_skills = []
-    # --- End Session State Initialization ---
+    # --- END Session State Initialization ---
 
-    # --- NAVIGATION BLOCK ---
-    nav_col, _ = st.columns([1, 1]) 
-
-    with nav_col:
+    # --- NAVIGATION BLOCK (Sidebar) ---
+    with st.sidebar:
+        st.header("Resume/CV Status")
+        
+        if st.session_state.parsed.get("name") and st.session_state.parsed.get('name') != "":
+            st.success(f"Currently loaded: **{st.session_state.parsed['name']}**")
+        elif st.session_state.full_text:
+            st.warning("Resume content is loaded (raw text).")
+        else:
+            st.info("Please upload a file or use the CV builder.")
+            
+        st.markdown("---")
         if st.button("🚪 Log Out", key="candidate_logout_btn", use_container_width=True):
             go_to("login") 
     # --- END NAVIGATION BLOCK ---
     
-    # Sidebar for Status Only
-    with st.sidebar:
-        st.header("Resume/CV Status")
-        
-        if st.session_state.parsed.get("name"):
-            st.success(f"Currently loaded: **{st.session_state.parsed['name']}**")
-        elif st.session_state.full_text:
-            st.warning("Resume content is loaded, but parsing may have errors.")
-        else:
-            st.info("Please upload a file or use the CV builder in 'CV Management' to begin.")
-
-    # Main Content Tabs (REARRANGED TABS HERE)
-    # ---------------------------------------------------------------------------------
-    # This is the line you want to edit to add, remove, or reorder tabs.
+    # Main Content Tabs (REARRANGED TABS)
     # ---------------------------------------------------------------------------------
     tab_cv_mgmt, tab_parsing, tab_jd_mgmt, tab_batch_match, tab_filter_jd, tab_chatbot, tab_interview_prep = st.tabs([
-        "✍️ CV Management", 
-        "📄 Resume Parsing", 
-        "📚 JD Management", 
-        "🎯 Batch JD Match",
-        "🔍 Filter JD",
-        "💬 Resume/JD Chatbot (Q&A)", # MOVED TO END (Index 5)
-        "❓ Interview Prep"            # MOVED TO END (Index 6)
+        "✍️ CV Management",          # 1. CV Builder/Preview
+        "📄 Resume Parsing",         # 2. File/Text Upload
+        "📚 JD Management",          # 3. Add JDs
+        "🎯 Batch JD Match",         # 4. Compare CV to JDs
+        "🔍 Filter JD",              # 5. Filter Saved JDs
+        "💬 Resume/JD Chatbot (Q&A)",# 6. Chatbot
+        "❓ Interview Prep"           # 7. Q&A Practice
     ])
     
-    is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
+    is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) and st.session_state.parsed.get('name') != ""
     
     # --- TAB 0: CV Management ---
     with tab_cv_mgmt:
@@ -589,6 +660,7 @@ def candidate_dashboard():
             st.markdown("---")
 
             if uploaded_file is not None:
+                # Logic to handle new upload vs. existing one
                 if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
                     st.session_state.candidate_uploaded_resumes = [uploaded_file] 
                     st.session_state.pasted_cv_text = ""
@@ -606,7 +678,6 @@ def candidate_dashboard():
             if file_to_parse:
                 if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True):
                     with st.spinner(f"Parsing {file_to_parse.name}..."):
-                        # Use stub/external call for parsing
                         result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
                         
                         if "error" not in result:
@@ -643,7 +714,6 @@ def candidate_dashboard():
                     with st.spinner("Parsing pasted text..."):
                         st.session_state.candidate_uploaded_resumes = []
                         
-                        # Use stub/external call for parsing
                         result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
                         
                         if "error" not in result:
@@ -685,7 +755,6 @@ def candidate_dashboard():
                         if not url: continue
                         
                         with st.spinner(f"Attempting JD extraction and metadata analysis for: {url}"):
-                            # Use stub/external call
                             jd_text = extract_jd_from_linkedin_url(url)
                             metadata = extract_jd_metadata(jd_text)
                         
@@ -719,7 +788,6 @@ def candidate_dashboard():
                             if len(name_base) > 30: name_base = f"{name_base[:27]}..."
                             if not name_base: name_base = f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}"
                             
-                            # Use stub/external call
                             metadata = extract_jd_metadata(text)
                             st.session_state.candidate_jd_list.append({"name": name_base, "content": text, **metadata})
                     st.success(f"✅ {len(texts)} JD(s) added successfully!")
@@ -733,7 +801,6 @@ def candidate_dashboard():
                 key="jd_file_uploader_candidate"
             )
             if st.button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
-                # Stub/Placeholder logic, actual file handling relies on external code
                 files_to_process = uploaded_files if isinstance(uploaded_files, list) else ([uploaded_files] if uploaded_files else [])
                 if files_to_process:
                     st.session_state.candidate_jd_list.append({"name": files_to_process[0].name, "content": "Simulated JD Text", "role": "Simulated Role", "job_type": "Full-time", "key_skills": ["Stub"]})
@@ -779,7 +846,7 @@ def candidate_dashboard():
         elif not st.session_state.candidate_jd_list:
             st.error("Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
             
-        else: # Assumes GROQ_API_KEY is handled externally
+        else: 
             if "candidate_match_results" not in st.session_state:
                 st.session_state.candidate_match_results = []
 
@@ -813,10 +880,8 @@ def candidate_dashboard():
                             jd_content = jd_item['content']
 
                             try:
-                                # Use stub/external call for fit evaluation
                                 fit_output = evaluate_jd_fit(jd_content, st.session_state.parsed)
                                 
-                                # Simplified Score Extraction (Relies on exact string format from stub)
                                 score_match = re.search(r'Overall Fit Score:\s*(\d+)/10', fit_output)
                                 skills_match = re.search(r'Skills Match:\s*(\d+)%', fit_output)
                                 experience_match = re.search(r'Experience Match:\s*(\d+)%', fit_output)
@@ -898,7 +963,7 @@ def candidate_dashboard():
             st.markdown("### Ask any question about the currently loaded resume.")
             if not is_resume_parsed:
                 st.warning("Please upload and parse a resume in the 'Resume Parsing' tab or use the 'CV Management' tab first.")
-            else: # Assumes GROQ_API_KEY is handled externally
+            else: 
                 
                 if 'qa_answer_resume' not in st.session_state: st.session_state.qa_answer_resume = ""
                 
@@ -911,7 +976,7 @@ def candidate_dashboard():
                 if st.button("Get Answer (Resume)", key="qa_btn_resume"):
                     with st.spinner("Generating answer..."):
                         try:
-                            answer = qa_on_resume(question) # Use stub/external call
+                            answer = qa_on_resume(question) 
                             st.session_state.qa_answer_resume = answer
                         except Exception as e:
                             st.error(f"Error during Resume Q&A: {e}")
@@ -926,7 +991,7 @@ def candidate_dashboard():
             
             if not st.session_state.candidate_jd_list:
                 st.warning("Please add Job Descriptions in the 'JD Management' tab first.")
-            else: # Assumes GROQ_API_KEY is handled externally
+            else: 
                 if 'qa_answer_jd' not in st.session_state: st.session_state.qa_answer_jd = ""
 
                 jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
@@ -946,7 +1011,7 @@ def candidate_dashboard():
                     if selected_jd_name and question.strip():
                         with st.spinner(f"Generating answer for {selected_jd_name}..."):
                             try:
-                                answer = qa_on_jd(question, selected_jd_name) # Use stub/external call
+                                answer = qa_on_jd(question, selected_jd_name) 
                                 st.session_state.qa_answer_jd = answer
                             except Exception as e:
                                 st.error(f"Error during JD Q&A: {e}")
@@ -963,7 +1028,7 @@ def candidate_dashboard():
         st.header("Interview Preparation Tools")
         if not is_resume_parsed or "error" in st.session_state.parsed:
             st.warning("Please upload and successfully parse a resume first.")
-        else: # Assumes GROQ_API_KEY is handled externally
+        else: 
             
             if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
             if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
@@ -981,7 +1046,7 @@ def candidate_dashboard():
             if st.button("Generate Interview Questions", key='iq_btn_c'):
                 with st.spinner("Generating questions..."):
                     try:
-                        raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice) # Use stub/external call
+                        raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice) 
                         st.session_state.iq_output = raw_questions_response
                         
                         st.session_state.interview_qa = [] 
@@ -1034,7 +1099,7 @@ def candidate_dashboard():
                                     report = evaluate_interview_answers(
                                         st.session_state.interview_qa,
                                         st.session_state.parsed
-                                    ) # Use stub/external call
+                                    ) 
                                     st.session_state.evaluation_report = report
                                     st.success("Evaluation complete! See the report below.")
                                 except Exception as e:
@@ -1047,3 +1112,22 @@ def candidate_dashboard():
                     st.markdown("---")
                     st.subheader("3. AI Evaluation Report")
                     st.markdown(st.session_state.evaluation_report)
+
+# ==============================================================================
+# 4. MAIN EXECUTION BLOCK (CRITICAL FOR STREAMLIT)
+# ==============================================================================
+
+if __name__ == '__main__':
+    # Add a login/landing page if needed, otherwise, run the dashboard directly
+    # A simple example:
+    if 'page' not in st.session_state:
+        st.session_state.page = "dashboard"
+    
+    if st.session_state.page == "dashboard":
+        candidate_dashboard()
+    else:
+        # Simple placeholder for a 'login' or landing page
+        st.title("Welcome to the Candidate Dashboard")
+        if st.button("Start Dashboard"):
+            st.session_state.page = "dashboard"
+            st.rerun()
