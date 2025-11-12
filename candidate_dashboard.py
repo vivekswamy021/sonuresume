@@ -45,7 +45,6 @@ def generate_education_string(entry: Dict[str, str]) -> str:
 
 def generate_experience_string(entry: Dict[str, Any]) -> str:
     """Formats a structured experience entry into a single string for storage."""
-    # This function is retained but less critical now that we use text areas
     company = entry.get('company', 'N/A')
     role = entry.get('role', 'N/A')
     from_year = entry.get('from_year', 'N/A')
@@ -58,7 +57,7 @@ def generate_experience_string(entry: Dict[str, Any]) -> str:
     else:
         duration = ""
 
-    # Example format: "Senior Engineer at TechCorp (2020 - Present) | Key Responsibilities: Managed 5-person team, led migration to AWS. CTC: $120k"
+    # Format the output string for the main 'experience' list
     return (
         f"**{role}** at **{company}** {duration}. "
         f"**CTC:** {ctc}. "
@@ -104,6 +103,29 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         name_from_file = getattr(file_input, 'name', 'Uploaded_Resume').split('.')[0].replace('_', ' ')
     else:
         name_from_file = "Parsed Text CV"
+        
+    # Example structured experience for default parsing
+    default_structured_experience = [
+        {
+            "company": "TechCorp", 
+            "role": "Senior Engineer", 
+            "from_year": "2020", 
+            "to_year": str(date.today().year), 
+            "ctc": "$120k", 
+            "responsibilities": "Managed 5-person team, led migration to AWS."
+        },
+        {
+            "company": "DataStart", 
+            "role": "Junior Developer", 
+            "from_year": "2018", 
+            "to_year": "2020", 
+            "ctc": "$60k", 
+            "responsibilities": "Developed ETL pipelines using Python and SQL."
+        }
+    ]
+    
+    # Generate the string list from the structured data for the 'experience' key
+    experience_string_list = [generate_experience_string(e) for e in default_structured_experience]
 
     parsed_data = {
         "name": name_from_file, 
@@ -112,10 +134,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "linkedin": "linkedin.com/in/candidate", 
         "github": "github.com/candidate",
         "skills": ["Python", "SQL", "Streamlit", "Data Analysis", "Git"], 
-        "experience": [
-            "Senior Engineer at TechCorp (2020 - Present) | Managed 5-person team, led migration to AWS. CTC: $120k",
-            "Junior Developer at DataStart (2018 - 2020) | Developed ETL pipelines using Python and SQL. CTC: $60k"
-        ], 
+        "experience": experience_string_list, # List of strings for AI consumption
+        "structured_experience": default_structured_experience, # Structured list for form
         "education": [
             "M.Sc. Computer Science (2016 - 2018) | University of Excellence | City University",
             "B.Tech. Information Technology (2012 - 2016) | College of Engineering | State University"
@@ -129,7 +149,7 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     # Create a placeholder full_text 
     compiled_text = ""
     for k, v in parsed_data.items():
-        if v:
+        if v and k != "structured_experience": # Exclude structured list from raw text
             compiled_text += f"{k.replace('_', ' ').title()}:\n"
             if isinstance(v, list):
                 compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
@@ -271,33 +291,39 @@ def cv_management_tab_content():
     st.markdown("### 1. Form Based CV Builder")
     st.info("Fill out the details below to generate a parsed CV that can be used immediately for matching and interview prep, or start by parsing a file in the 'Resume Parsing' tab.")
 
-    # Initialize the parsed data if not already existing
+    # --- Session State Initialization for CV Builder ---
     default_parsed = {
         "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
         "skills": [], "experience": [], "education": [], "certifications": [], 
-        "projects": [], "strength": [], "personal_details": ""
+        "projects": [], "strength": [], "personal_details": "",
+        "structured_experience": [] # New key for structured dynamic input
     }
     
     if "cv_form_data" not in st.session_state:
         # Load from parsed if it exists
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
+            # Ensure the structured experience list is present if loading from parsed data
+            if 'structured_experience' not in st.session_state.cv_form_data:
+                # If experience is only a list of strings, initialize structured_experience as empty
+                st.session_state.cv_form_data['structured_experience'] = [] 
         else:
             st.session_state.cv_form_data = default_parsed
             
-    # CRITICAL: Ensure education, experience, and certifications are lists of strings
+    # CRITICAL: Ensure education and certifications are lists of strings
     if not isinstance(st.session_state.cv_form_data.get('education'), list):
          st.session_state.cv_form_data['education'] = []
-    if not isinstance(st.session_state.cv_form_data.get('experience'), list):
-         st.session_state.cv_form_data['experience'] = []
     if not isinstance(st.session_state.cv_form_data.get('certifications'), list):
          st.session_state.cv_form_data['certifications'] = []
-
+    if 'structured_experience' not in st.session_state.cv_form_data:
+         st.session_state.cv_form_data['structured_experience'] = []
+    if 'temp_experience_data' not in st.session_state:
+         st.session_state.temp_experience_data = {} # Used for the Add Experience fields
 
     
-    # --- CV Builder Form (Main Sections) ---
+    # --- CV Builder Form (Main Sections - excluding dynamic parts) ---
     with st.form("cv_builder_form"):
-        st.subheader("Personal, Contact, Experience, Education, and Certification Details")
+        st.subheader("Personal, Contact, Education, and Certification Details")
         
         # --- PERSONAL & CONTACT DETAILS ---
         col1, col2, col3 = st.columns(3)
@@ -343,19 +369,6 @@ def cv_management_tab_content():
             key="cv_personal_details_input"
         )
         
-        # --- EXPERIENCE DETAILS (TEXT AREA) ---
-        st.markdown("---")
-        st.subheader("💼 Professional Experience (One role/company entry per line)")
-        experience_text = "\n".join(st.session_state.cv_form_data.get('experience', []))
-        new_experience_text = st.text_area(
-            "List your work experience entries (e.g., Role at Company, Dates, Key Achievements...)", 
-            value=experience_text,
-            height=150,
-            key="cv_experience_input"
-        )
-        # Update session state with the list of strings (one per line)
-        st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
-
         # --- EDUCATION DETAILS (TEXT AREA) ---
         st.markdown("---")
         st.subheader("🎓 Education (One degree/institution entry per line)")
@@ -363,7 +376,7 @@ def cv_management_tab_content():
         new_education_text = st.text_area(
             "List your education entries (e.g., Degree, Institution, Years...)", 
             value=education_text,
-            height=150,
+            height=100,
             key="cv_education_input"
         )
         # Update session state with the list of strings (one per line)
@@ -376,7 +389,7 @@ def cv_management_tab_content():
         new_certifications_text = st.text_area(
             "List your certifications (e.g., Certification Name, Issuing Body, Date...)", 
             value=certifications_text,
-            height=100,
+            height=70,
             key="cv_certifications_input"
         )
         # Update session state with the list of strings (one per line)
@@ -413,9 +426,84 @@ def cv_management_tab_content():
         )
         st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
 
-
+        # Submitting this form will synchronize all data, including the structured experience.
         submit_form_button = st.form_submit_button("Generate and Load ALL CV Data", type="primary", use_container_width=True)
 
+    
+    # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE the main form) ---
+    st.markdown("---")
+    st.subheader("💼 Professional Experience")
+    st.markdown("Use the fields below to add structured experience entries one by one.")
+    
+    # Function to handle adding the experience entry
+    def add_experience_entry():
+        exp_data = st.session_state.temp_experience_data
+        if not exp_data.get('company') or not exp_data.get('role') or not exp_data.get('from_year'):
+            st.error("Please fill in Company, Role, and From Year.")
+            return
+
+        new_entry = {
+            "company": exp_data.get('company', ''),
+            "role": exp_data.get('role', ''),
+            "from_year": exp_data.get('from_year', ''),
+            "to_year": exp_data.get('to_year', 'Present'),
+            "ctc": exp_data.get('ctc', 'Confidential'),
+            "responsibilities": exp_data.get('responsibilities', '')
+        }
+        
+        st.session_state.cv_form_data['structured_experience'].append(new_entry)
+        # Clear temp state to refresh the input fields
+        st.session_state.temp_experience_data = {}
+        st.toast(f"Experience at {new_entry['company']} added.")
+        
+    def remove_experience_entry(index):
+        if 0 <= index < len(st.session_state.cv_form_data['structured_experience']):
+            removed_company = st.session_state.cv_form_data['structured_experience'][index]['company']
+            del st.session_state.cv_form_data['structured_experience'][index]
+            st.toast(f"Experience at {removed_company} removed.")
+
+    # Input fields for a single experience entry
+    with st.container(border=True):
+        st.markdown("##### Add New Experience Entry")
+        col_c, col_r = st.columns(2)
+        with col_c:
+            st.text_input("Company Name", key="temp_experience_data[company]", placeholder="e.g., Google")
+        with col_r:
+            st.text_input("Role/Title", key="temp_experience_data[role]", placeholder="e.g., Data Scientist")
+
+        col_fy, col_ty, col_c3 = st.columns(3)
+        current_year = date.today().year
+        year_options = [str(y) for y in range(current_year, 1950, -1)]
+        
+        with col_fy:
+            st.selectbox("From Year", options=year_options, key="temp_experience_data[from_year]", index=0)
+        with col_ty:
+            st.selectbox("To Year", options=["Present"] + year_options, key="temp_experience_data[to_year]", index=0)
+        with col_c3:
+            st.text_input("CTC (Annual)", key="temp_experience_data[ctc]", placeholder="e.g., $150k / 20L INR")
+
+        st.text_area("Key Responsibilities/Achievements (Brief summary)", height=70, key="temp_experience_data[responsibilities]")
+        
+        st.button("➕ Add This Experience", on_click=add_experience_entry, use_container_width=True, type="secondary")
+
+    # Display current experience entries
+    st.markdown("##### Current Experience Entries")
+    if st.session_state.cv_form_data['structured_experience']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
+            
+            # Use a unique key for each expander to prevent state issues
+            expander_title = f"{entry['role']} at {entry['company']} ({entry['from_year']} - {entry['to_year']})"
+            
+            with st.expander(expander_title, expanded=False):
+                col_disp_1, col_disp_2, col_disp_3 = st.columns([1, 1, 0.5])
+                col_disp_1.markdown(f"**Role:** {entry['role']}")
+                col_disp_2.markdown(f"**Duration:** {entry['from_year']} - {entry['to_year']}")
+                col_disp_3.markdown(f"**CTC:** {entry['ctc']}")
+                st.markdown(f"**Responsibilities:** {entry['responsibilities']}")
+                st.button("❌ Remove", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="danger")
+    else:
+        st.info("No experience entries added yet. Use the form above to add one.")
+        
     
     # --- FINAL SUBMISSION LOGIC (for the main form) ---
     if submit_form_button:
@@ -423,12 +511,20 @@ def cv_management_tab_content():
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
 
+        # 1. Synchronize the structured experience list into the flat 'experience' list
+        experience_string_list = [
+            generate_experience_string(entry) 
+            for entry in st.session_state.cv_form_data.get('structured_experience', [])
+        ]
+        st.session_state.cv_form_data['experience'] = experience_string_list
+        
+        # 2. Update the main parsed state
         st.session_state.parsed = st.session_state.cv_form_data.copy()
         
-        # Create a placeholder full_text for the AI tools
+        # 3. Create a placeholder full_text for the AI tools
         compiled_text = ""
         for k, v in st.session_state.cv_form_data.items():
-            if v:
+            if v and k != "structured_experience": # Exclude structured list from raw text
                 compiled_text += f"{k.replace('_', ' ').title()}:\n"
                 if isinstance(v, list):
                     compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
@@ -436,7 +532,7 @@ def cv_management_tab_content():
                     compiled_text += str(v) + "\n\n"
         st.session_state.full_text = compiled_text
         
-        # Reset matching/interview state
+        # 4. Reset matching/interview state
         st.session_state.candidate_match_results = []
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
@@ -448,9 +544,10 @@ def cv_management_tab_content():
     
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
+        # Remove structured_experience for presentation/download, but keep it in session state
         filled_data_for_preview = {
             k: v for k, v in st.session_state.parsed.items() 
-            if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
+            if v and k != "structured_experience" and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
         }
         
         tab_markdown, tab_json, tab_pdf = st.tabs(["📝 Markdown View", "💾 JSON View", "⬇️ PDF/HTML Download"])
@@ -468,10 +565,10 @@ def cv_management_tab_content():
             )
 
         with tab_json:
-            st.json(st.session_state.parsed)
+            st.json(filled_data_for_preview)
             st.info("This is the raw, structured data used by the AI tools.")
 
-            json_output = json.dumps(st.session_state.parsed, indent=2)
+            json_output = json.dumps(filled_data_for_preview, indent=2)
             st.download_button(
                 label="⬇️ Download CV as JSON File",
                 data=json_output,
@@ -675,8 +772,11 @@ def candidate_dashboard():
         st.session_state.cv_form_data = {
             "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
             "skills": [], "experience": [], "education": [], "certifications": [], 
-            "projects": [], "strength": [], "personal_details": ""
+            "projects": [], "strength": [], "personal_details": "",
+            "structured_experience": [] # New key for dynamic experience
         }
+    if 'temp_experience_data' not in st.session_state:
+         st.session_state.temp_experience_data = {}
         
     if "candidate_filter_skills_multiselect" not in st.session_state:
         st.session_state.candidate_filter_skills_multiselect = []
