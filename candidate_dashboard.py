@@ -1457,7 +1457,7 @@ def cv_management_tab_content():
         )
         
         st.markdown("---")
-        st.subheader("Technical Sections (One Item per Line)")
+        st.subheader("Technical Sections (One Item per Line, where applicable)")
 
         # Skills
         skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
@@ -1479,16 +1479,62 @@ def cv_management_tab_content():
         )
         st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
 
-        # Education
-        education_text = "\n".join(st.session_state.cv_form_data.get('education', []))
-        new_education_text = st.text_area(
-            "Education (Degrees, Institutions, Dates)", 
-            value=education_text,
-            height=100,
-            key="cv_education"
-        )
-        st.session_state.cv_form_data['education'] = [d.strip() for d in new_education_text.split('\n') if d.strip()]
+        # --- MODIFIED: EDUCATION SECTION ---
+        st.markdown("#### Education (Degrees, Institutions, Dates)")
         
+        # Display current education entries
+        if st.session_state.cv_form_data.get('education'):
+            st.markdown("##### Current Entries:")
+            for i, entry in enumerate(st.session_state.cv_form_data['education']):
+                col_disp, col_rem = st.columns([10, 1])
+                with col_disp:
+                    st.write(f"**{i+1}.** {entry}")
+                with col_rem:
+                    if st.button("x", key=f"remove_edu_{i}"):
+                        st.session_state.cv_form_data['education'].pop(i)
+                        st.success("Education entry removed.")
+                        st.rerun() 
+            st.markdown("---")
+            
+        st.markdown("##### Add New Education Entry:")
+        
+        # Form inputs for adding a new entry
+        col_degree, col_college = st.columns(2)
+        with col_degree:
+            new_degree = st.text_input("Degree/Certification Name", key="new_edu_degree")
+        with col_college:
+            new_college = st.text_input("College/Institution Name", key="new_edu_college")
+
+        col_uni, col_from_date, col_to_date = st.columns(3)
+        with col_uni:
+            new_university = st.text_input("University (If applicable)", key="new_edu_university")
+        with col_from_date:
+            new_from_year = st.text_input("Start Year (e.g., 2018)", key="new_edu_from_year", max_chars=4)
+        with col_to_date:
+            present_checkbox = st.checkbox("Currently Studying/Completed", key="new_edu_present_check")
+            if present_checkbox:
+                new_to_year = "Present"
+            else:
+                new_to_year = st.text_input("End Year (e.g., 2022)", key="new_edu_to_year", max_chars=4)
+                if not new_to_year.strip(): new_to_year = "Unknown"
+        
+        if st.button("➕ Add Education Entry", key="add_edu_button"):
+            if new_degree.strip() and new_college.strip() and new_from_year.strip():
+                # Format the new entry into a single string
+                uni_part = f" / {new_university.strip()}" if new_university.strip() else ""
+                date_part = f"({new_from_year.strip()} - {new_to_year})"
+                
+                formatted_entry = f"{new_degree.strip()} from {new_college.strip()}{uni_part} {date_part}"
+                
+                # Append to the education list
+                st.session_state.cv_form_data['education'].append(formatted_entry)
+                st.success("New education entry added. Remember to click 'Generate and Load CV Data' below to save changes.")
+                st.rerun() # Rerun to clear form fields and update the display list
+            else:
+                st.error("Please fill in Degree Name, College Name, and Start Year.")
+
+        # --- END MODIFIED EDUCATION SECTION ---
+
         # Certifications
         certifications_text = "\n".join(st.session_state.cv_form_data.get('certifications', []))
         new_certifications_text = st.text_area(
@@ -1592,7 +1638,7 @@ def cv_management_tab_content():
 
                 if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
                     
-                    md += f"## **{k.replace('_', ' ').upper()}**\n"
+                    md += f"## **{k.replace("_", " ").upper()}**\n"
                     md += "---\n"
                     
                     if k == 'personal_details' and isinstance(v, str):
@@ -2271,7 +2317,7 @@ def candidate_dashboard():
                                 skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
                                 
                                 if section_analysis_match:
-                                    section_text = section_analysis_match.group(1)
+                                    section_text = section_analysis.match.group(1)
                                     skills_match = re.search(r'Skills Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
                                     experience_match = re.search(r'Experience Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
                                     education_match = re.search(r'Education Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
