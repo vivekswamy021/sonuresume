@@ -206,7 +206,7 @@ def generate_cv_html(parsed_data):
             # Format: Role at Company (Start Year - End Year). Responsibilities: <text>
             experience_list += f"""
             <li>
-                **{exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).
+                {exp.get('role', 'N/A')} at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).
                 <br>Responsibilities: {exp.get('responsibilities', 'N/A')}
             </li>
             """
