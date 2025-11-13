@@ -473,8 +473,9 @@ def add_education_entry():
     degree = st.session_state.new_edu_degree_in_form.strip()
     college = st.session_state.new_edu_college_in_form.strip()
     university = st.session_state.new_edu_university_in_form.strip()
-    year_from = st.session_state.new_edu_year_from_in_form
-    year_to = st.session_state.new_edu_year_to_in_form
+    # Safely retrieve date inputs
+    year_from = st.session_state.get('new_edu_year_from_in_form')
+    year_to = st.session_state.get('new_edu_year_to_in_form')
 
     if not degree or not college or not university:
         st.warning("Please enter the Degree, College Name, and University.")
@@ -496,7 +497,11 @@ def add_education_entry():
         st.session_state.new_edu_degree_in_form = ""
         st.session_state.new_edu_college_in_form = ""
         st.session_state.new_edu_university_in_form = ""
-        st.toast("Education entry added!")
+        # Optionally reset date pickers/number inputs to default state if preferred
+        # st.session_state.new_edu_year_from_in_form = date.today().year - 4
+        # st.session_state.new_edu_year_to_in_form = date.today().year
+
+        st.toast("Education entry added and input fields cleared!")
         st.rerun() # Rerun to update the display of education entries
         
 def remove_education_entry(index):
@@ -553,18 +558,22 @@ def cv_management_tab_content():
         # Input fields for a new education entry (INSIDE the form)
         col_d, col_c, col_u = st.columns(3)
         with col_d:
-            st.text_input("Degree/Qualification", key="new_edu_degree_in_form", placeholder="B.Tech, M.S., Ph.D.")
+            # Use value from session state to maintain state across reruns, including clearing
+            st.text_input("Degree/Qualification", value=st.session_state.new_edu_degree_in_form, key="new_edu_degree_in_form", placeholder="B.Tech, M.S., Ph.D.")
         with col_c:
-            st.text_input("College/Institution", key="new_edu_college_in_form", placeholder="IIT Delhi, Stanford")
+            st.text_input("College/Institution", value=st.session_state.new_edu_college_in_form, key="new_edu_college_in_form", placeholder="IIT Delhi, Stanford")
         with col_u:
-            st.text_input("University", key="new_edu_university_in_form", placeholder="University of XYZ")
+            st.text_input("University", value=st.session_state.new_edu_university_in_form, key="new_edu_university_in_form", placeholder="University of XYZ")
 
         col_from, col_to = st.columns(2)
         with col_from:
+            # Note: For number inputs, resetting the key is usually enough to reset the value
             st.number_input("Year From", min_value=1950, max_value=date.today().year, value=st.session_state.new_edu_year_from_in_form, step=1, key="new_edu_year_from_in_form")
         with col_to:
             st.number_input("Year To (or Expected)", min_value=1950, max_value=date.today().year + 5, value=st.session_state.new_edu_year_to_in_form, step=1, key="new_edu_year_to_in_form")
         
+        # NOTE: The "Add Education" button CANNOT be here. It must be outside.
+
         st.markdown("---")
         st.subheader("Technical Sections (One Item per Line)")
 
@@ -599,7 +608,7 @@ def cv_management_tab_content():
     # --- EDUCATION MANAGEMENT BUTTONS (OUTSIDE THE FORM) ---
     
     # Standard st.button with callback (Allowed outside a form)
-    st.button("➕ Add Education Entry", key="add_edu_btn_final", on_click=add_education_entry, use_container_width=False, help="Click to save the new entry above into your CV data.")
+    st.button("➕ Add Education Entry (Saves & Clears Inputs)", key="add_edu_btn_final", on_click=add_education_entry, use_container_width=False, help="Click to save the new entry above into your CV data and clear the inputs.")
     st.markdown("---") 
 
     # Display existing entries with a remove button
