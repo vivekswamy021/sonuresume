@@ -57,7 +57,7 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     else:
         name_from_file = "Parsed Text CV"
         
-    # Example structured experience for default parsing
+    # Example structured data
     default_structured_experience = [
         {
             "company": "Prgayan AI", 
@@ -77,7 +77,6 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         }
     ]
     
-    # Example structured education for default parsing (NEW STRUCTURE)
     default_structured_education = [
         {
             "degree": "M.Sc. Computer Science", 
@@ -88,18 +87,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
             "score": "8.5",
             "type": "CGPA"
         },
-        {
-            "degree": "B.Tech. Information Technology", 
-            "college": "College of Engineering", 
-            "university": "State University",
-            "from_year": "2016",
-            "to_year": "2020",
-            "score": "75",
-            "type": "Percentage"
-        }
     ]
     
-    # Example structured certifications for default parsing
     default_structured_certifications = [
         {
             "title": "AWS Certified Cloud Practitioner", 
@@ -117,14 +106,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "github": "github.com/candidate",
         "skills": ["Python", "Machine Learning", "Streamlit", "Data Analysis", "TensorFlow"], 
         "experience": default_structured_experience, 
-        "structured_experience": default_structured_experience, # Structured list for form
-        
-        "education": default_structured_education, # Storing structured data here
-        "structured_education": default_structured_education, # New structured list for form
-        
-        "certifications": default_structured_certifications, # Storing structured data here
-        "structured_certifications": default_structured_certifications, # New structured list for form
-        
+        "education": default_structured_education, 
+        "certifications": default_structured_certifications, 
         "projects": ["Built this Streamlit Dashboard"], 
         "strength": ["Problem Solver", "Quick Learner"], 
         "personal_details": "Highly motivated and results-oriented professional with 3+ years experience in AIML."
@@ -133,8 +116,7 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     # Create a placeholder full_text 
     compiled_text = ""
     for k, v in parsed_data.items():
-        # Exclude structured lists from raw text generation, except for the main keys
-        if v and k not in ["structured_experience", "structured_certifications", "structured_education"]: 
+        if v: 
             compiled_text += f"{k.replace('_', ' ').title()}:\n"
             if isinstance(v, list):
                  # For raw text, we will flatten the structured data into simple strings (JSON format)
@@ -368,50 +350,61 @@ def format_parsed_json_to_markdown(parsed_data):
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
-    st.info("Fill out the details below to generate a parsed CV. **NOTE: The dynamic lists (Education, Certifications, Experience) are managed *outside* this main form to comply with Streamlit's technical rules. Please use the Add/Remove sections below.**")
+    st.info("Fill out the details below. For **Education, Certifications, and Experience**, please enter the data using the required **JSON** or **Markdown** format shown in the input boxes. This entire form is processed when you click the 'Generate and Load' button.")
 
     # --- Session State Initialization for CV Builder ---
     default_parsed = {
         "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
         "skills": [], "experience": [], "education": [], "certifications": [], 
         "projects": [], "strength": [], "personal_details": "",
-        "structured_experience": [],
-        "structured_certifications": [],
-        "structured_education": [] # New structured education key
     }
     
     if "cv_form_data" not in st.session_state:
+        # Load from parsed state if available
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            # Ensure the structured lists are present, falling back to the main list if needed
-            if 'structured_experience' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
-            if 'structured_certifications' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
-            # NEW: Initialize structured_education
-            if 'structured_education' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
         else:
             st.session_state.cv_form_data = default_parsed
             
     # CRITICAL: Ensure lists are initialized correctly
-    if 'structured_experience' not in st.session_state.cv_form_data:
-         st.session_state.cv_form_data['structured_experience'] = []
-    if 'structured_certifications' not in st.session_state.cv_form_data:
-         st.session_state.cv_form_data['structured_certifications'] = []
-    if 'structured_education' not in st.session_state.cv_form_data: # Ensure it exists
-         st.session_state.cv_form_data['structured_education'] = []
     if not isinstance(st.session_state.cv_form_data.get('skills'), list):
          st.session_state.cv_form_data['skills'] = []
     if not isinstance(st.session_state.cv_form_data.get('projects'), list):
          st.session_state.cv_form_data['projects'] = []
+    
+    
+    # Helper to convert structured list to simple JSON string for the textarea
+    def list_to_json_text(data_list):
+        if not data_list or not isinstance(data_list, list) or not all(isinstance(i, dict) for i in data_list):
+            return ""
+        try:
+            # Use a slightly simplified, indented JSON for readability
+            return json.dumps(data_list, indent=2)
+        except:
+            return ""
 
-    
-    # Initialize/reset temp data structures 
-    current_year = date.today().year
-    
+    # Helper to attempt parsing the text area input into a structured list
+    def parse_text_to_list(text):
+        if not text.strip():
+            return []
+        try:
+            # Attempt to parse as JSON
+            data = json.loads(text)
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict):
+                return [data] # Handle single object pasted without brackets
+            return []
+        except json.JSONDecodeError:
+            # Fallback for simple markdown/plain text if required, but for structure we focus on JSON
+            st.warning("Could not parse structured data. Please ensure the format is valid JSON (list of dictionaries).")
+            return []
+        except Exception as e:
+            st.error(f"Error processing structured data: {e}")
+            return []
+
+
     # --- CV Builder Form (SINGLE BLOCK) ---
-    # This form collects all static data and triggers the submission logic
     with st.form("cv_builder_form", clear_on_submit=False):
         
         # --- 1. PERSONAL & CONTACT DETAILS ---
@@ -457,7 +450,7 @@ def cv_management_tab_content():
             key="cv_personal_details_input"
         ).strip() 
         
-        # --- 2. SKILLS (Now inside the single form) ---
+        # --- 2. SKILLS ---
         st.markdown("---")
         st.subheader("2. Key Skills (One Item per Line)")
 
@@ -468,20 +461,39 @@ def cv_management_tab_content():
             height=100,
             key="cv_skills_input_form" 
         )
-        # Update session state on submit
-        st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
+        # Update session state for skill list on submit
+        # st.session_state.cv_form_data['skills'] is updated inside the submit logic below
         
-        # --- 3. EDUCATION PLACEHOLDER (Instruct user to use external forms) ---
+        
+        # --- 3. DYNAMIC EDUCATION MANAGEMENT (Inside Form via Textarea) ---
         st.markdown("---")
-        st.subheader("3. Education Details")
-        st.info("⚠️ **Education** is managed using the dynamic 'Add Entry' form **outside** this main form. Please scroll down to manage entries.")
+        st.subheader("3. 🎓 Dynamic Education Management")
+        st.markdown("Enter your education details below as a **JSON array of objects**.")
+        st.caption("Each entry should be an object with keys: `degree`, `college`, `university`, `from_year`, `to_year`, `score`, `type`.")
+
+        education_json_text = st.text_area(
+            "Education Entries (JSON Format)", 
+            value=list_to_json_text(st.session_state.cv_form_data.get('education', [])),
+            height=200,
+            key="cv_education_json_input"
+        )
         
-        # --- 4. CERTIFICATIONS PLACEHOLDER (Instruct user to use external forms) ---
+        
+        # --- 4. DYNAMIC CERTIFICATIONS MANAGEMENT (Inside Form via Textarea) ---
         st.markdown("---")
-        st.subheader("4. Certifications")
-        st.info("⚠️ **Certifications** are managed using the dynamic 'Add Certificate' form **outside** this main form. Please scroll down to manage entries.")
+        st.subheader("4. 🏅 Dynamic Certifications Management")
+        st.markdown("Enter your certifications details below as a **JSON array of objects**.")
+        st.caption("Each entry should be an object with keys: `title`, `given_by`, `issue_date`.")
+
+        certifications_json_text = st.text_area(
+            "Certifications Entries (JSON Format)", 
+            value=list_to_json_text(st.session_state.cv_form_data.get('certifications', [])),
+            height=150,
+            key="cv_certifications_json_input"
+        )
         
-        # --- 5. PROJECTS (Now inside the single form) ---
+
+        # --- 5. PROJECTS ---
         st.markdown("---")
         st.subheader("5. Projects (One Item per Line)")
         projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
@@ -491,9 +503,10 @@ def cv_management_tab_content():
             height=100,
             key="cv_projects_input_form"
         )
-        st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
+        # st.session_state.cv_form_data['projects'] is updated inside the submit logic below
 
-        # --- 6. STRENGTHS (Now inside the single form) ---
+
+        # --- 6. STRENGTHS ---
         st.markdown("---")
         st.subheader("6. Strengths (One Item per Line)")
         strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
@@ -503,17 +516,27 @@ def cv_management_tab_content():
             height=70,
             key="cv_strength_input_form"
         )
-        st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
+        # st.session_state.cv_form_data['strength'] is updated inside the submit logic below
 
-        # --- 7. EXPERIENCE PLACEHOLDER (Instruct user to use external forms) ---
+
+        # --- 7. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Inside Form via Textarea) ---
         st.markdown("---")
-        st.subheader("7. Professional Experience")
-        st.info("⚠️ **Experience** is managed using the dynamic 'Add Experience' form **outside** this main form. Please scroll down to manage entries.")
+        st.subheader("7. 💼 Dynamic Professional Experience Management")
+        st.markdown("Enter your experience details below as a **JSON array of objects**.")
+        st.caption("Each entry should be an object with keys: `company`, `role`, `from_year`, `to_year`, `ctc`, `responsibilities`.")
+
+        experience_json_text = st.text_area(
+            "Experience Entries (JSON Format)", 
+            value=list_to_json_text(st.session_state.cv_form_data.get('experience', [])),
+            height=300,
+            key="cv_experience_json_input"
+        )
         
-        # CRITICAL: The submit button is ONLY placed here, inside the one form block.
+        
+        # --- 8. GENERATE BUTTON ---
         st.markdown("---")
         st.subheader("8. Generate or Load ALL CV Data")
-        st.warning("Ensure you have added your **Education, Certifications, and Experience** entries using the dynamic forms below this main form, then click below to finalize.")
+        st.warning("Ensure all fields, including the structured JSON inputs, are correctly formatted before submitting.")
         submit_form_button = st.form_submit_button("Generate and Load ALL CV Data", type="primary", use_container_width=True)
 
     
@@ -523,23 +546,22 @@ def cv_management_tab_content():
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
 
-        # 1. Synchronize the structured lists into the main keys for AI consumption
-        # NOTE: This pulls the latest data from the lists managed OUTSIDE the form.
-        st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
-        st.session_state.cv_form_data['certifications'] = st.session_state.cv_form_data.get('structured_certifications', [])
-        st.session_state.cv_form_data['education'] = st.session_state.cv_form_data.get('structured_education', [])
+        # 1. Update list-based fields from text areas
+        st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
+        st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
+        st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
         
-        # 2. Update the main parsed state
+        # 2. Parse structured data fields (Experience, Education, Certifications)
+        st.session_state.cv_form_data['education'] = parse_text_to_list(education_json_text)
+        st.session_state.cv_form_data['certifications'] = parse_text_to_list(certifications_json_text)
+        st.session_state.cv_form_data['experience'] = parse_text_to_list(experience_json_text)
+        
+        # 3. Update the main parsed state
         st.session_state.parsed = st.session_state.cv_form_data.copy()
         
-        # 3. Create a placeholder full_text for the AI tools
+        # 4. Create a placeholder full_text for the AI tools
         compiled_text = ""
-        EXCLUDE_KEYS = ["structured_experience", "structured_certifications", "structured_education"] 
-        
         for k, v in st.session_state.cv_form_data.items():
-            if k in EXCLUDE_KEYS:
-                continue
-            
             if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
                 compiled_text += f"{k.replace('_', ' ').title()}:\n"
                 if isinstance(v, list):
@@ -552,405 +574,21 @@ def cv_management_tab_content():
                     
         st.session_state.full_text = compiled_text
         
-        # 4. Reset matching/interview state
+        # 5. Reset matching/interview state
         st.session_state.candidate_match_results = []
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
 
-        st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
+        st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All sections are stored as **structured data**.")
         
     
-    # -------------------------------------------------------------------------
-    # --- DYNAMIC EDUCATION SECTION (OUTSIDE the main form - Corresponds to Section 3) ---
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    st.subheader("🎓 **Dynamic Education Management**")
-    st.markdown("Use the fields below to add structured education entries one by one.")
-    
-    # Function to handle adding the education entry
-    def add_education_entry():
-        current_year = date.today().year
-        
-        degree_val = st.session_state.get("temp_edu_degree_key", "").strip() 
-        college_val = st.session_state.get("temp_edu_college_key", "").strip() 
-        university_val = st.session_state.get("temp_edu_university_key", "").strip() 
-        from_year_val = st.session_state.get("temp_edu_from_year_key", "").strip()
-        to_year_val = st.session_state.get("temp_edu_to_year_key", str(current_year)).strip()
-        score_val = st.session_state.get("temp_edu_score_key", "").strip()
-        score_type_val = st.session_state.get("temp_edu_type_key", "CGPA").strip()
-        
-        if not degree_val or not college_val or not from_year_val:
-            st.error("Please fill in **Degree**, **College**, and **From Year**.")
-            return
-
-        new_entry = {
-            "degree": degree_val,
-            "college": college_val,
-            "university": university_val,
-            "from_year": from_year_val,
-            "to_year": to_year_val,
-            "score": score_val,
-            "type": score_type_val
-        }
-        
-        st.session_state.cv_form_data['structured_education'].append(new_entry)
-        
-        # Clear temp state/widget values to refresh the input fields
-        st.session_state["temp_edu_degree_key"] = ""
-        st.session_state["temp_edu_college_key"] = ""
-        st.session_state["temp_edu_university_key"] = ""
-        st.session_state["temp_edu_from_year_key"] = str(current_year) 
-        st.session_state["temp_edu_to_year_key"] = "Present" 
-        st.session_state["temp_edu_score_key"] = ""
-        st.session_state["temp_edu_type_key"] = "CGPA"
-        
-        st.toast(f"Education: {new_entry['degree']} added.")
-        
-    def remove_education_entry(index):
-        if 0 <= index < len(st.session_state.cv_form_data['structured_education']):
-            removed_degree = st.session_state.cv_form_data['structured_education'][index]['degree']
-            del st.session_state.cv_form_data['structured_education'][index]
-            st.toast(f"Education '{removed_degree}' removed.")
-            st.rerun() 
-
-    # Input fields for a single education entry
-    with st.container(border=True):
-        st.markdown("##### Add New Education Entry")
-        current_year = date.today().year
-        year_options = [str(y) for y in range(current_year, 1950, -1)]
-        
-        # Input fields
-        col_d, col_c = st.columns(2)
-        with col_d:
-            st.text_input(
-                "Degree/Qualification", 
-                value=st.session_state.get("temp_edu_degree_key", ""),
-                key="temp_edu_degree_key", 
-                placeholder="e.g., M.Sc. Computer Science"
-            )
-            
-        with col_c:
-            st.text_input(
-                "College Name", 
-                value=st.session_state.get("temp_edu_college_key", ""),
-                key="temp_edu_college_key", 
-                placeholder="e.g., MIT, Chennai"
-            )
-            
-        st.text_input(
-            "University Name", 
-            value=st.session_state.get("temp_edu_university_key", ""),
-            key="temp_edu_university_key", 
-            placeholder="e.g., Anna University"
-        )
-        
-        # Years
-        col_fy, col_ty = st.columns(2)
-        
-        with col_fy:
-            current_from_year = st.session_state.get("temp_edu_from_year_key", str(current_year))
-            from_year_index = year_options.index(current_from_year) if current_from_year in year_options else 0
-            
-            st.selectbox(
-                "From Year", 
-                options=year_options, 
-                index=from_year_index,
-                key="temp_edu_from_year_key"
-            )
-            
-        with col_ty:
-            to_year_options = ["Present"] + year_options
-            current_to_year = st.session_state.get("temp_edu_to_year_key", "Present")
-            to_year_index = to_year_options.index(current_to_year) if current_to_year in to_year_options else 0
-            
-            st.selectbox(
-                "To Year", 
-                options=to_year_options, 
-                index=to_year_index,
-                key="temp_edu_to_year_key"
-            )
-            
-        # Score
-        col_s, col_st = st.columns([2, 1])
-        with col_s:
-            st.text_input(
-                "CGPA or Score Value", 
-                value=st.session_state.get("temp_edu_score_key", ""),
-                key="temp_edu_score_key", 
-                placeholder="e.g., 8.5 or 90"
-            )
-        with col_st:
-            st.selectbox(
-                "Type",
-                options=["CGPA", "Percentage", "Grade"],
-                index=["CGPA", "Percentage", "Grade"].index(st.session_state.get("temp_edu_type_key", "CGPA")),
-                key="temp_edu_type_key",
-                label_visibility='collapsed'
-            )
-            
-        st.button("➕ Add Education Entry", on_click=add_education_entry, use_container_width=True, type="secondary")
-
-    # Display current education entries
-    st.markdown("##### Current Education Entries")
-    if st.session_state.cv_form_data['structured_education']:
-        for i, entry in enumerate(st.session_state.cv_form_data['structured_education']):
-            score_display = f"{entry.get('score', 'N/A')} {entry.get('type', '')}".strip()
-            expander_title = f"{entry['degree']} - {score_display} ({entry['from_year']} - {entry['to_year']})"
-            
-            with st.expander(expander_title, expanded=False):
-                st.markdown(f"**Degree:** {entry['degree']}")
-                st.markdown(f"**College:** {entry['college']}")
-                st.markdown(f"**University:** {entry['university']}")
-                st.markdown(f"**Duration:** {entry['from_year']} - {entry['to_year']}")
-                st.markdown(f"**Score:** {score_display}")
-                
-                st.button("❌ Remove", key=f"remove_edu_{i}", on_click=remove_education_entry, args=(i,), type="secondary") 
-    else:
-        st.info("No education entries added yet.")
-
-
-    
-    # -------------------------------------------------------------------------
-    # --- DYNAMIC CERTIFICATION SECTION (OUTSIDE the main form - Corresponds to Section 4) ---
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    st.subheader("🏅 **Dynamic Certifications Management**")
-    st.markdown("Use the fields below to add structured certification entries one by one.")
-    
-    # Function to handle adding the certification entry
-    def add_certification_entry():
-        title_val = st.session_state.get("temp_cert_title_key", "").strip()
-        given_by_val = st.session_state.get("temp_cert_given_by_key", "").strip()
-        issue_date_val = st.session_state.get("temp_cert_issue_date_key", str(date.today().year)).strip()
-        
-        if not title_val or not given_by_val:
-            st.error("Please fill in **Certification Title** and **Issuing Organization**.")
-            return
-
-        new_entry = {
-            "title": title_val,
-            "given_by": given_by_val,
-            "issue_date": issue_date_val
-        }
-        
-        st.session_state.cv_form_data['structured_certifications'].append(new_entry)
-        
-        st.session_state["temp_cert_title_key"] = ""
-        st.session_state["temp_cert_given_by_key"] = ""
-        st.session_state["temp_cert_issue_date_key"] = str(date.today().year)
-        
-        st.toast(f"Certificate: {new_entry['title']} added.")
-        
-    def remove_certification_entry(index):
-        if 0 <= index < len(st.session_state.cv_form_data['structured_certifications']):
-            removed_title = st.session_state.cv_form_data['structured_certifications'][index]['title']
-            del st.session_state.cv_form_data['structured_certifications'][index]
-            st.toast(f"Certificate '{removed_title}' removed.")
-            st.rerun()
-
-    # Input fields for a single certification entry
-    with st.container(border=True):
-        st.markdown("##### Add New Certificate")
-        
-        col_t, col_g = st.columns(2)
-        with col_t:
-            st.text_input(
-                "Certification Title", 
-                value=st.session_state.get("temp_cert_title_key", ""),
-                key="temp_cert_title_key", 
-                placeholder="e.g., Google Cloud Architect"
-            )
-            
-        with col_g:
-            st.text_input(
-                "Issuing Organization", 
-                value=st.session_state.get("temp_cert_given_by_key", ""),
-                key="temp_cert_given_by_key", 
-                placeholder="e.g., Coursera, AWS, PMI"
-            )
-            
-        col_d, _ = st.columns(2)
-        with col_d:
-            st.text_input(
-                "Issue Date (YYYY-MM-DD or Year)", 
-                value=st.session_state.get("temp_cert_issue_date_key", str(date.today().year)),
-                key="temp_cert_issue_date_key", 
-                placeholder="e.g., 2024-05-15 or 2023"
-            )
-            
-        st.button("➕ Add Certificate", on_click=add_certification_entry, use_container_width=True, type="secondary")
-
-    # Display current certification entries
-    st.markdown("##### Current Certifications")
-    if st.session_state.cv_form_data['structured_certifications']:
-        for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
-            
-            expander_title = f"{entry['title']} by {entry['given_by']} (Issued: {entry['issue_date']})"
-            
-            with st.expander(expander_title, expanded=False):
-                st.markdown(f"**Title:** {entry['title']}")
-                st.markdown(f"**Issued By:** {entry['given_by']}")
-                st.markdown(f"**Issue Date:** {entry['issue_date']}")
-                
-                st.button("❌ Remove", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
-    else:
-        st.info("No certifications added yet.")
-
-    
-    # -------------------------------------------------------------------------
-    # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE the main form - Corresponds to Section 7) ---
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    st.subheader("💼 **Dynamic Professional Experience Management**")
-    st.markdown("Use the fields below to add structured experience entries one by one.")
-    
-    # Function to handle adding the experience entry
-    def add_experience_entry():
-        current_year = date.today().year
-        
-        company_val = st.session_state.get("temp_exp_company_key", "").strip()
-        role_val = st.session_state.get("temp_exp_role_key", "").strip()
-        from_year_val = st.session_state.get("temp_exp_from_year_key", "").strip()
-        to_year_val = st.session_state.get("temp_exp_to_year_key", "Present").strip()
-        ctc_val = st.session_state.get("temp_exp_ctc_key", "").strip()
-        responsibilities_val = st.session_state.get("temp_exp_responsibilities_key", "").strip()
-        
-        if not company_val or not role_val or not from_year_val:
-            st.error("Please fill in **Company**, **Role**, and **From Year**.")
-            return
-
-        new_entry = {
-            "company": company_val,
-            "role": role_val,
-            "from_year": from_year_val,
-            "to_year": to_year_val,
-            "ctc": ctc_val,
-            "responsibilities": responsibilities_val
-        }
-        
-        st.session_state.cv_form_data['structured_experience'].append(new_entry)
-        
-        # Clear temp state/widget values to refresh the input fields
-        st.session_state["temp_exp_company_key"] = ""
-        st.session_state["temp_exp_role_key"] = ""
-        st.session_state["temp_exp_from_year_key"] = str(current_year)
-        st.session_state["temp_exp_to_year_key"] = "Present"
-        st.session_state["temp_exp_ctc_key"] = ""
-        st.session_state["temp_exp_responsibilities_key"] = ""
-        
-        st.toast(f"Experience at {new_entry['company']} added.")
-        
-    def remove_experience_entry(index):
-        if 0 <= index < len(st.session_state.cv_form_data['structured_experience']):
-            removed_company = st.session_state.cv_form_data['structured_experience'][index]['company']
-            del st.session_state.cv_form_data['structured_experience'][index]
-            st.toast(f"Experience at {removed_company} removed.")
-            st.rerun()
-
-    # Input fields for a single experience entry
-    with st.container(border=True):
-        st.markdown("##### Add New Experience Entry")
-        
-        col_c, col_r = st.columns(2)
-        
-        current_year = date.today().year
-        year_options = [str(y) for y in range(current_year, 1950, -1)]
-        
-        with col_c:
-            company_val = st.text_input(
-                "Company Name", 
-                value=st.session_state.get("temp_exp_company_key", ""),
-                key="temp_exp_company_key", # The key holds the current widget value
-                placeholder="e.g., Google"
-            )
-            
-        with col_r:
-            role_val = st.text_input(
-                "Role/Title", 
-                value=st.session_state.get("temp_exp_role_key", ""),
-                key="temp_exp_role_key", 
-                placeholder="e.g., Data Scientist"
-            )
-
-        col_fy, col_ty, col_c3 = st.columns(3)
-        
-        current_from_year = st.session_state.get("temp_exp_from_year_key", str(current_year))
-        current_to_year = st.session_state.get("temp_exp_to_year_key", "Present")
-        
-        with col_fy:
-            from_year_options = year_options
-            try:
-                from_year_index = from_year_options.index(current_from_year) 
-            except ValueError:
-                from_year_index = 0
-            
-            st.selectbox(
-                "From Year", 
-                options=from_year_options, 
-                index=from_year_index, 
-                key="temp_exp_from_year_key"
-            )
-            
-        with col_ty:
-            to_year_options = ["Present"] + year_options
-            try:
-                to_year_index = to_year_options.index(current_to_year)
-            except ValueError:
-                to_year_index = 0
-            
-            st.selectbox(
-                "To Year", 
-                options=to_year_options, 
-                index=to_year_index,
-                key="temp_exp_to_year_key"
-            )
-            
-        with col_c3:
-            ctc_val = st.text_input(
-                "CTC (Annual)", 
-                value=st.session_state.get("temp_exp_ctc_key", ""),
-                key="temp_exp_ctc_key", 
-                placeholder="e.g., $150k / 20L INR"
-            )
-
-        responsibilities_val = st.text_area(
-            "Key Responsibilities/Achievements (Brief summary)", 
-            value=st.session_state.get("temp_exp_responsibilities_key", ""),
-            height=70, 
-            key="temp_exp_responsibilities_key"
-        )
-        
-        st.button("➕ Add This Experience", on_click=add_experience_entry, use_container_width=True, type="secondary")
-
-    # Display current experience entries
-    st.markdown("##### Current Experience Entries")
-    if st.session_state.cv_form_data['structured_experience']:
-        for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
-            
-            expander_title = f"{entry['role']} at {entry['company']} ({entry['from_year']} - {entry['to_year']})"
-            
-            with st.expander(expander_title, expanded=False):
-                col_disp_1, col_disp_2, col_disp_3 = st.columns([1, 1, 0.5])
-                col_disp_1.markdown(f"**Role:** {entry['role']}")
-                col_disp_2.markdown(f"**Duration:** {entry['from_year']} - {entry['to_year']}")
-                col_disp_3.markdown(f"**CTC:** {entry['ctc']}")
-                st.markdown(f"**Responsibilities:** {entry['responsibilities']}")
-                
-                st.button("❌ Remove", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="secondary") 
-    else:
-        st.info("No experience entries added yet.")
-    
-    # --- CV Preview and Download ---
+    # --- CV Preview and Download (Outside the Form) ---
     st.markdown("---")
     st.subheader("9. Loaded CV Data Preview and Download")
     
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
-        EXCLUDE_KEYS_PREVIEW = ["structured_experience", "structured_certifications", "structured_education"]
-        filled_data_for_preview = {
-            k: v for k, v in st.session_state.parsed.items() 
-            if v and k not in EXCLUDE_KEYS_PREVIEW and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
-        }
+        filled_data_for_preview = st.session_state.parsed
         
         tab_markdown, tab_json, tab_pdf = st.tabs(["📝 Markdown View", "💾 JSON View", "⬇️ PDF/HTML Download"])
 
@@ -1175,36 +813,9 @@ def candidate_dashboard():
             "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
             "skills": [], "experience": [], "education": [], "certifications": [], 
             "projects": [], "strength": [], "personal_details": "",
-            "structured_experience": [], 
-            "structured_certifications": [],
-            "structured_education": [] 
         }
     
-    # Initialize temp data structures 
-    current_year = date.today().year
-    
-    # Initialize widget keys for the "Add New Education Entry" form (NEW)
-    if "temp_edu_degree_key" not in st.session_state: st.session_state["temp_edu_degree_key"] = ""
-    if "temp_edu_college_key" not in st.session_state: st.session_state["temp_edu_college_key"] = ""
-    if "temp_edu_university_key" not in st.session_state: st.session_state["temp_edu_university_key"] = ""
-    if "temp_edu_from_year_key" not in st.session_state: st.session_state["temp_edu_from_year_key"] = str(current_year)
-    if "temp_edu_to_year_key" not in st.session_state: st.session_state["temp_edu_to_year_key"] = "Present"
-    if "temp_edu_score_key" not in st.session_state: st.session_state["temp_edu_score_key"] = ""
-    if "temp_edu_type_key" not in st.session_state: st.session_state["temp_edu_type_key"] = "CGPA"
-    
-    # Initialize widget keys for the "Add New Experience Entry" form
-    if "temp_exp_company_key" not in st.session_state: st.session_state["temp_exp_company_key"] = ""
-    if "temp_exp_role_key" not in st.session_state: st.session_state["temp_exp_role_key"] = ""
-    if "temp_exp_from_year_key" not in st.session_state: st.session_state["temp_exp_from_year_key"] = str(current_year)
-    if "temp_exp_to_year_key" not in st.session_state: st.session_state["temp_exp_to_year_key"] = "Present"
-    if "temp_exp_ctc_key" not in st.session_state: st.session_state["temp_exp_ctc_key"] = ""
-    if "temp_exp_responsibilities_key" not in st.session_state: st.session_state["temp_exp_responsibilities_key"] = ""
-
-    # Initialize widget keys for the "Add New Certification Entry" form
-    if "temp_cert_title_key" not in st.session_state: st.session_state["temp_cert_title_key"] = ""
-    if "temp_cert_given_by_key" not in st.session_state: st.session_state["temp_cert_given_by_key"] = ""
-    if "temp_cert_issue_date_key" not in st.session_state: st.session_state["temp_cert_issue_date_key"] = str(date.today().year)
-        
+    # Initialize necessary keys if they don't exist
     if "candidate_filter_skills_multiselect" not in st.session_state:
         st.session_state.candidate_filter_skills_multiselect = []
     if "filtered_jds_display" not in st.session_state:
