@@ -28,6 +28,10 @@ question_section_options = ["skills","experience", "certifications", "projects",
 DEFAULT_JOB_TYPES = ["Full-time", "Contract", "Internship", "Remote", "Part-time"]
 DEFAULT_ROLES = ["Software Engineer", "Data Scientist", "Product Manager", "HR Manager", "Marketing Specialist", "Operations Analyst"]
 
+# Common Degrees for Selectbox
+DEGREE_OPTIONS = ["Select Degree", "PhD", "M.Tech", "M.S.", "MBA", "B.Tech", "B.S.", "B.A.", "Associate's Degree", "High School Diploma"]
+CURRENT_YEAR = date.today().year
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -466,6 +470,53 @@ def generate_cv_html(parsed_data):
     html_content += '</body></html>'
     return html_content
 
+def add_education_entry():
+    """Formats and adds the temporary education fields to the main education list."""
+    
+    degree = st.session_state.temp_education_degree
+    college = st.session_state.temp_education_college
+    university = st.session_state.temp_education_university
+    year_from = st.session_state.temp_education_year_from
+    year_to = st.session_state.temp_education_year_to
+    
+    if degree == "Select Degree" or not college.strip():
+        st.error("Please select a valid Degree and enter a College Name.")
+        return
+    
+    # Format the entry string
+    if year_from and year_to:
+        duration = f" ({year_from} - {year_to})"
+    elif year_from:
+        duration = f" (Start: {year_from})"
+    elif year_to:
+        duration = f" (End: {year_to})"
+    else:
+        duration = ""
+        
+    university_part = f" / {university}" if university else ""
+    
+    # Example format: B.Tech in Computer Science, College of Engg / University of Excellence (2018 - 2022)
+    new_entry = f"{degree}, {college}{university_part}{duration}".strip()
+    
+    if new_entry:
+        if 'education' not in st.session_state.cv_form_data:
+            st.session_state.cv_form_data['education'] = []
+            
+        # Check for duplicates before adding
+        if new_entry not in st.session_state.cv_form_data['education']:
+            st.session_state.cv_form_data['education'].append(new_entry)
+            st.success(f"Added: {new_entry}")
+        else:
+            st.warning("This education entry already exists.")
+            
+        # Clear temporary fields after successful addition
+        st.session_state.temp_education_degree = "Select Degree"
+        st.session_state.temp_education_college = ""
+        st.session_state.temp_education_university = ""
+        st.session_state.temp_education_year_from = None
+        st.session_state.temp_education_year_to = None
+
+
 def cv_management_tab_content():
     
     st.header("📝 Prepare Your CV")
@@ -484,6 +535,14 @@ def cv_management_tab_content():
         else:
             st.session_state.cv_form_data = default_parsed
     
+    # Initialize temporary education fields if they don't exist
+    if 'temp_education_degree' not in st.session_state: st.session_state.temp_education_degree = DEGREE_OPTIONS[0]
+    if 'temp_education_college' not in st.session_state: st.session_state.temp_education_college = ""
+    if 'temp_education_university' not in st.session_state: st.session_state.temp_education_university = ""
+    if 'temp_education_year_from' not in st.session_state: st.session_state.temp_education_year_from = None
+    if 'temp_education_year_to' not in st.session_state: st.session_state.temp_education_year_to = None
+
+
     with st.form("cv_builder_form"):
         # Personal & Contact Details
         col1, col2, col3 = st.columns(3)
@@ -502,37 +561,59 @@ def cv_management_tab_content():
         st.subheader("Technical Sections (One Item per Line)")
 
         # Skills
-        # FIX: Ensure we join only strings from the list using str() conversion
         skills_text = "\n".join([str(s) for s in st.session_state.cv_form_data.get('skills', []) if s is not None])
         new_skills_text = st.text_area("Key Skills (Technical and Soft)", value=skills_text, height=150, key="cv_skills")
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
         # Experience
-        # FIX: Ensure we join only strings from the list using str() conversion
         experience_text = "\n".join([str(e) for e in st.session_state.cv_form_data.get('experience', []) if e is not None])
         new_experience_text = st.text_area("Professional Experience (Job Roles, Companies, Dates, Key Responsibilities)", value=experience_text, height=150, key="cv_experience")
         st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
 
         # Education
-        # FIX: Ensure we join only strings from the list using str() conversion
+        st.subheader("Education")
+        st.markdown("Use the fields below to add a structured education entry.")
+        
+        # Education Input Fields
+        col_ed1, col_ed2, col_ed3 = st.columns(3)
+        with col_ed1:
+            st.selectbox("Degree", options=DEGREE_OPTIONS, key="temp_education_degree")
+        with col_ed2:
+            st.text_input("College Name", key="temp_education_college")
+        with col_ed3:
+            st.text_input("University (Optional)", key="temp_education_university")
+
+        col_ed4, col_ed5, col_ed6 = st.columns(3)
+        with col_ed4:
+            st.number_input("Year From (Start)", min_value=1950, max_value=CURRENT_YEAR, step=1, key="temp_education_year_from", value=None, help="E.g., 2018")
+        with col_ed5:
+            st.number_input("Year To (End/Present)", min_value=1950, max_value=CURRENT_YEAR + 5, step=1, key="temp_education_year_to", value=None, help="E.g., 2022")
+        with col_ed6:
+            # Button must be outside the form if it runs a function that modifies session state
+            # but since we are submitting the main form, we will use an on_click handler and make the button type secondary
+            st.markdown("<br>", unsafe_allow_html=True) # Add some vertical space to align the button
+            st.form_submit_button("➕ Add Education Entry", on_click=add_education_entry, type="secondary", use_container_width=True)
+
+
+        # Display the education list in a text area for review and manual editing
         education_text = "\n".join([str(d) for d in st.session_state.cv_form_data.get('education', []) if d is not None])
-        new_education_text = st.text_area("Education (Degrees, Institutions, Dates)", value=education_text, height=100, key="cv_education")
+        new_education_text = st.text_area("Education List (Degrees, Institutions, Dates) - Edit or remove entries here", value=education_text, height=150, key="cv_education")
         st.session_state.cv_form_data['education'] = [d.strip() for d in new_education_text.split('\n') if d.strip()]
         
+        st.markdown("---")
+
+
         # Certifications
-        # FIX: Ensure we join only strings from the list using str() conversion
         certifications_text = "\n".join([str(c) for c in st.session_state.cv_form_data.get('certifications', []) if c is not None])
         new_certifications_text = st.text_area("Certifications (Name, Issuing Body, Date)", value=certifications_text, height=100, key="cv_certifications")
         st.session_state.cv_form_data['certifications'] = [c.strip() for c in new_certifications_text.split('\n') if c.strip()]
         
         # Projects
-        # FIX: Ensure we join only strings from the list using str() conversion
         projects_text = "\n".join([str(p) for p in st.session_state.cv_form_data.get('projects', []) if p is not None])
         new_projects_text = st.text_area("Projects (Name, Description, Technologies)", value=projects_text, height=150, key="cv_projects")
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
         
         # Strengths
-        # FIX: Ensure we join only strings from the list using str() conversion
         strength_text = "\n".join([str(s) for s in st.session_state.cv_form_data.get('strength', []) if s is not None])
         new_strength_text = st.text_area("Strengths / Key Personal Qualities (One per line)", value=strength_text, height=100, key="cv_strength")
         st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
@@ -1226,6 +1307,13 @@ def main_candidate_test():
     if "candidate_filter_skills_multiselect" not in st.session_state: st.session_state.candidate_filter_skills_multiselect = []
     if "filtered_jds_display" not in st.session_state: st.session_state.filtered_jds_display = []
     if "last_selected_skills" not in st.session_state: st.session_state.last_selected_skills = []
+    
+    # --- New Education State Initialization ---
+    if 'temp_education_degree' not in st.session_state: st.session_state.temp_education_degree = DEGREE_OPTIONS[0]
+    if 'temp_education_college' not in st.session_state: st.session_state.temp_education_college = ""
+    if 'temp_education_university' not in st.session_state: st.session_state.temp_education_university = ""
+    if 'temp_education_year_from' not in st.session_state: st.session_state.temp_education_year_from = None
+    if 'temp_education_year_to' not in st.session_state: st.session_state.temp_education_year_to = None
 
     # Injecting sample data for testing purposes if session state is empty
     if not st.session_state.parsed:
@@ -1235,7 +1323,7 @@ def main_candidate_test():
             "phone": "555-1234",
             "skills": ["Python", "Streamlit", "Machine Learning", "AWS"],
             "experience": ["Data Scientist at Tech Corp (2020-Present)", "ML Intern at Startup X (2019)"],
-            "education": ["M.S. in Data Science, University of Great Minds"],
+            "education": ["M.S. in Data Science, University of Great Minds (2020 - 2022)"],
             "certifications": ["AWS Certified Cloud Practitioner"],
             "projects": ["Job Portal Chatbot (Python/Streamlit)", "Customer Churn Prediction Model"],
             "strength": ["Problem Solver", "Detail-Oriented"],
@@ -1244,6 +1332,9 @@ def main_candidate_test():
             "linkedin": "https://linkedin.com/in/janedoe"
         }
          st.session_state.full_text = json.dumps(st.session_state.parsed, indent=2)
+         # Also sync to form data for initial view
+         st.session_state.cv_form_data = st.session_state.parsed.copy()
+
 
     candidate_dashboard()
 
