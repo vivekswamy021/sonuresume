@@ -34,11 +34,6 @@ load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
 if not GROQ_API_KEY:
-    st.warning(
-        "🚨 WARNING: GROQ_API_KEY environment variable not set. "
-        "AI functionality (Parsing, Matching, Q&A) will not work. "
-        "Please ensure a '.env' file exists with your key."
-    )
     # Initialize a mock client to prevent immediate crash if key is missing
     class MockGroqClient:
         def chat(self):
@@ -226,10 +221,16 @@ def evaluate_jd_fit(job_description, parsed_json):
     if not GROQ_API_KEY: return "AI Evaluation Disabled: GROQ_API_KEY not set."
     if "error" in parsed_json: return "Cannot evaluate due to resume parsing errors."
     
+    # Ensure all items in the summary are strings before dumping to JSON
+    cleaned_json = parsed_json.copy()
+    for key in ['skills', 'experience', 'education']:
+        if isinstance(cleaned_json.get(key), list):
+            cleaned_json[key] = [str(item) for item in cleaned_json[key] if item is not None]
+
     resume_summary = json.dumps({
-        'Skills': parsed_json.get('skills', 'Not found'),
-        'Experience': parsed_json.get('experience', 'Not found'),
-        'Education': parsed_json.get('education', 'Not found'),
+        'Skills': cleaned_json.get('skills', 'Not found'),
+        'Experience': cleaned_json.get('experience', 'Not found'),
+        'Education': cleaned_json.get('education', 'Not found'),
     }, indent=2)
 
     prompt = f"""Evaluate how well the following resume content matches the provided job description.
@@ -254,6 +255,7 @@ def evaluate_interview_answers(qa_list, parsed_json):
     """Evaluates the user's answers against the resume content and provides feedback."""
     if not GROQ_API_KEY: return "AI Evaluation Disabled: GROQ_API_KEY not set."
     
+    # Ensure parsed_json content is suitable for JSON dump (keys/values are str/list/dict)
     resume_summary = json.dumps(parsed_json, indent=2)
     qa_summary = "\n---\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in qa_list])
     
@@ -275,8 +277,14 @@ def generate_interview_questions(parsed_json, section):
     
     section_title = section.replace("_", " ").title()
     section_content = parsed_json.get(section, "")
-    if isinstance(section_content, (list, dict)): section_content = json.dumps(section_content, indent=2)
-    elif not isinstance(section_content, str): section_content = str(section_content)
+    # Robustly convert list or dict content to a suitable string for the prompt
+    if isinstance(section_content, list): 
+        # FIX: Ensure all list items are strings before joining
+        section_content = "\n".join([str(item) for item in section_content if item is not None])
+    elif isinstance(section_content, dict): 
+        section_content = json.dumps(section_content, indent=2)
+    elif not isinstance(section_content, str): 
+        section_content = str(section_content)
 
     if not section_content.strip():
         return f"No significant content found for the '{section_title}' section."
@@ -349,11 +357,12 @@ def dump_to_excel(parsed_json, filename):
                 ws.append([section_key.replace('_', ' ').title()])
                 
                 if isinstance(content, list):
+                    # FIX: Ensure all list items are converted to str
                     for item in content:
                         if item: ws.append(["", str(item)])
                 elif isinstance(content, dict):
                     for k, v in content.items():
-                        if v: ws.append(["", f"{k.replace('_', ' ').title()}: {v}"])
+                        if v: ws.append(["", f"{k.replace('_', ' ').title()}: {str(v)}"])
                 else:
                     ws.append(["", str(content)])
 
@@ -447,18 +456,17 @@ def generate_cv_html(parsed_data):
             if k == 'personal_details' and isinstance(v, str): html_content += f"<p>{v}</p>"
             elif isinstance(v, list):
                 html_content += '<ul>'
+                # FIX: Ensure list items are strings for safe display
                 for item in v:
-                    if item: html_content += f"<li>{item}</li>"
+                    if item: html_content += f"<li>{str(item)}</li>" 
                 html_content += '</ul>'
-            else: html_content += f"<p>{v}</p>"
+            else: html_content += f"<p>{str(v)}</p>"
             html_content += '</div></div>'
 
     html_content += '</body></html>'
     return html_content
 
 def cv_management_tab_content():
-    # ... (Omitted for brevity, but this function is defined within the full original code)
-    # The essential logic for this tab is below:
     
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
@@ -493,35 +501,39 @@ def cv_management_tab_content():
         st.markdown("---")
         st.subheader("Technical Sections (One Item per Line)")
 
-        # Skills, Experience, Education, Certifications, Projects, Strengths fields for text area are below:
-        
         # Skills
-        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        skills_text = "\n".join([str(s) for s in st.session_state.cv_form_data.get('skills', []) if s is not None])
         new_skills_text = st.text_area("Key Skills (Technical and Soft)", value=skills_text, height=150, key="cv_skills")
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
         # Experience
-        experience_text = "\n".join(st.session_state.cv_form_data.get('experience', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        experience_text = "\n".join([str(e) for e in st.session_state.cv_form_data.get('experience', []) if e is not None])
         new_experience_text = st.text_area("Professional Experience (Job Roles, Companies, Dates, Key Responsibilities)", value=experience_text, height=150, key="cv_experience")
         st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
 
         # Education
-        education_text = "\n".join(st.session_state.cv_form_data.get('education', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        education_text = "\n".join([str(d) for d in st.session_state.cv_form_data.get('education', []) if d is not None])
         new_education_text = st.text_area("Education (Degrees, Institutions, Dates)", value=education_text, height=100, key="cv_education")
         st.session_state.cv_form_data['education'] = [d.strip() for d in new_education_text.split('\n') if d.strip()]
         
         # Certifications
-        certifications_text = "\n".join(st.session_state.cv_form_data.get('certifications', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        certifications_text = "\n".join([str(c) for c in st.session_state.cv_form_data.get('certifications', []) if c is not None])
         new_certifications_text = st.text_area("Certifications (Name, Issuing Body, Date)", value=certifications_text, height=100, key="cv_certifications")
         st.session_state.cv_form_data['certifications'] = [c.strip() for c in new_certifications_text.split('\n') if c.strip()]
         
         # Projects
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        projects_text = "\n".join([str(p) for p in st.session_state.cv_form_data.get('projects', []) if p is not None])
         new_projects_text = st.text_area("Projects (Name, Description, Technologies)", value=projects_text, height=150, key="cv_projects")
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
         
         # Strengths
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []))
+        # FIX: Ensure we join only strings from the list using str() conversion
+        strength_text = "\n".join([str(s) for s in st.session_state.cv_form_data.get('strength', []) if s is not None])
         new_strength_text = st.text_area("Strengths / Key Personal Qualities (One per line)", value=strength_text, height=100, key="cv_strength")
         st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
 
@@ -539,7 +551,7 @@ def cv_management_tab_content():
         for k, v in st.session_state.cv_form_data.items():
             if v:
                 compiled_text += f"{k.replace('_', ' ').title()}:\n"
-                if isinstance(v, list): compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+                if isinstance(v, list): compiled_text += "\n".join([f"- {str(item)}" for item in v if item is not None]) + "\n\n"
                 else: compiled_text += str(v) + "\n\n"
         st.session_state.full_text = compiled_text
         
@@ -560,7 +572,6 @@ def cv_management_tab_content():
         }
         
         def format_parsed_json_to_markdown(parsed_data):
-            # ... (Omitted for brevity)
             md = ""
             if parsed_data.get('name'): md += f"# **{parsed_data['name']}**\n\n"
             contact_info = []
@@ -579,8 +590,9 @@ def cv_management_tab_content():
                     md += f"## **{k.replace('_', ' ').upper()}**\n"
                     md += "---\n"
                     if isinstance(v, list):
+                        # FIX: Ensure we are joining strings for Markdown list display
                         for item in v:
-                            if item: md += f"- {item}\n"
+                            if item: md += f"- {str(item)}\n"
                         md += "\n"
                     else:
                         md += f"{v}\n\n"
@@ -600,6 +612,7 @@ def cv_management_tab_content():
             )
 
         with tab_json:
+            # st.json handles dicts gracefully, no fix needed here.
             st.json(st.session_state.parsed)
             json_output = json.dumps(st.session_state.parsed, indent=2)
             st.download_button(
@@ -633,7 +646,6 @@ def cv_management_tab_content():
         st.info("Please fill out the form above or parse a resume to see the preview and download options.")
 
 def filter_jd_tab_content():
-    # ... (Omitted for brevity, but this function is defined within the full original code)
     
     st.header("🔍 Filter Job Descriptions by Criteria")
     
@@ -642,13 +654,15 @@ def filter_jd_tab_content():
         if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
         return
     
-    unique_roles = sorted(list(set([item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES)))
-    unique_job_types = sorted(list(set([item.get('job_type', 'Full-time') for item in st.session_state.candidate_jd_list] + DEFAULT_JOB_TYPES)))
+    # Safely extract roles and job types, ensuring they are strings
+    unique_roles = sorted(list(set([str(item.get('role', 'General Analyst')) for item in st.session_state.candidate_jd_list if item.get('role')] + DEFAULT_ROLES)))
+    unique_job_types = sorted(list(set([str(item.get('job_type', 'Full-time')) for item in st.session_state.candidate_jd_list if item.get('job_type')] + DEFAULT_JOB_TYPES)))
     
     STARTER_KEYWORDS = {"Python", "MySQL", "GCP", "cloud computing", "ML", "API services", "LLM integration", "JavaScript", "SQL", "AWS"}
     all_unique_skills = set(STARTER_KEYWORDS)
     for jd in st.session_state.candidate_jd_list:
-        valid_skills = [skill.strip() for skill in jd.get('key_skills', []) if isinstance(skill, str) and skill.strip()]
+        # Safely handle key_skills list (assuming elements are strings or can be converted)
+        valid_skills = [str(skill).strip() for skill in jd.get('key_skills', []) if skill is not None and str(skill).strip()]
         all_unique_skills.update(valid_skills)
     unique_skills_list = sorted(list(all_unique_skills))
     
@@ -672,7 +686,8 @@ def filter_jd_tab_content():
         for jd in all_jd_data:
             jd_role = jd.get('role', 'General Analyst')
             jd_job_type = jd.get('job_type', 'Full-time')
-            jd_key_skills = [s.lower() for s in jd.get('key_skills', []) if isinstance(s, str) and s.strip()]
+            # Ensure skill list items are strings before lowercasing
+            jd_key_skills = [str(s).lower() for s in jd.get('key_skills', []) if s is not None and str(s).strip()]
             
             role_match = (selected_role == "All Roles") or (selected_role == jd_role)
             job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
@@ -697,19 +712,21 @@ def filter_jd_tab_content():
     if filtered_jds:
         display_data = []
         for jd in filtered_jds:
+            # FIX: Ensure all list items are converted to str for safe joining in the display
+            key_skills_str = ", ".join([str(s) for s in jd.get('key_skills', ['N/A'])[:5] if s is not None]) + "..."
             display_data.append({
                 "Job Description Title": jd['name'].replace("--- Simulated JD for: ", ""),
                 "Role": jd.get('role', 'N/A'),
                 "Job Type": jd.get('job_type', 'N/A'),
-                "Key Skills": ", ".join(jd.get('key_skills', ['N/A'])[:5]) + "...",
+                "Key Skills": key_skills_str,
             })
         st.dataframe(display_data, use_container_width=True)
 
         st.markdown("##### Detailed View")
         for idx, jd in enumerate(filtered_jds, 1):
             with st.expander(f"JD {idx}: {jd['name'].replace('--- Simulated JD for: ', '')} - ({jd.get('role', 'N/A')})"):
-                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')}")
-                st.markdown(f"**Extracted Skills:** {', '.join(jd.get('key_skills', ['N/A']))}")
+                # FIX: Ensure list items are converted to str for safe joining in the display
+                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')} | **Key Skills:** {', '.join([str(s) for s in jd.get('key_skills', ['N/A']) if s is not None])}")
                 st.markdown("---")
                 st.text(jd['content'])
     elif st.session_state.candidate_jd_list and apply_filters_button:
@@ -742,8 +759,7 @@ def candidate_dashboard():
         else:
             st.info("Please upload a file or use the CV builder in 'CV Management' to begin.")
 
-    # Main Content Tabs (REARRANGED TABS HERE)
-    # 🚨 This is the key line to edit tab order/names 
+    # Main Content Tabs 
     tab_cv_mgmt, tab_parsing, tab_jd_mgmt, tab_batch_match, tab_filter_jd, tab_chatbot, tab_interview_prep = st.tabs([
         "✍️ CV Management", 
         "📄 Resume Parsing", 
@@ -938,7 +954,9 @@ def candidate_dashboard():
                 title = jd_item['name']
                 display_title = title.replace("--- Simulated JD for: ", "")
                 with st.expander(f"JD {idx}: {display_title} | Role: {jd_item.get('role', 'N/A')}"):
-                    st.markdown(f"**Job Type:** {jd_item.get('job_type', 'N/A')} | **Key Skills:** {', '.join(jd_item.get('key_skills', ['N/A']))}")
+                    # FIX: Ensure list items are converted to str for safe joining in the display
+                    key_skills_str = ', '.join([str(s) for s in jd_item.get('key_skills', ['N/A']) if s is not None])
+                    st.markdown(f"**Job Type:** {jd_item.get('job_type', 'N/A')} | **Key Skills:** {key_skills_str}")
                     st.markdown("---")
                     st.text(jd_item['content'])
         else:
