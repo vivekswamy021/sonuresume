@@ -103,7 +103,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     default_structured_certifications = [
         {
             "title": "AWS Certified Cloud Practitioner", 
-            "given_by": "Amazon Web Services", 
+            "given_by": "Dr. Smith", 
+            "organization_name": "Amazon Web Services", # Added new field
             "issue_date": "2023-10-01"
         }
     ]
@@ -273,10 +274,14 @@ def generate_cv_html(parsed_data):
     certifications_list = ""
     for cert in parsed_data.get('certifications', []):
         if isinstance(cert, dict):
-            # Format: Title - Issued by: Organization, Date: <date>
+            # Format: Title - Issued by: Name (Org), Date: <date>
+            issuer_info = f"{cert.get('given_by', 'N/A')}"
+            if cert.get('organization_name', 'N/A') and cert.get('organization_name', 'N/A') != 'N/A':
+                 issuer_info += f" ({cert.get('organization_name', 'N/A')})"
+                 
             certifications_list += f"""
             <li>
-                {cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}
+                {cert.get('title', 'N/A')} - Issued by: {issuer_info}, Date: {cert.get('issue_date', 'N/A')}
             </li>
             """
 
@@ -344,9 +349,13 @@ def format_parsed_json_to_markdown(parsed_data):
     certifications_md = []
     for cert in parsed_data.get('certifications', []):
         if isinstance(cert, dict):
-            # Format: Title - Issued by: Organization, Date: <date>
+            # Format: Title - Issued by: Name (Org), Date: <date>
+            issuer_info = f"{cert.get('given_by', 'N/A')}"
+            if cert.get('organization_name', 'N/A') and cert.get('organization_name', 'N/A') != 'N/A':
+                 issuer_info += f" ({cert.get('organization_name', 'N/A')})"
+                 
             certifications_md.append(
-                f"{cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}"
+                f"{cert.get('title', 'N/A')} - Issued by: {issuer_info}, Date: {cert.get('issue_date', 'N/A')}"
             )
     md += "- " + "\n- ".join(certifications_md)
 
@@ -409,18 +418,21 @@ def add_education_entry_handler():
 def add_certification_entry_handler():
     # Retrieve values using the widget keys
     title_val = st.session_state.get("temp_cert_title_key", "").strip()
-    # Updated to use the new key 'temp_cert_given_by_name_key'
+    # Key for 'Issue By Name (Sir/Mam)'
     given_by_val = st.session_state.get("temp_cert_given_by_name_key", "").strip() 
+    # Key for 'Issuing Organization Name' (NEW)
+    organization_name_val = st.session_state.get("temp_cert_organization_name_key", "").strip() 
     issue_date_val = st.session_state.get("temp_cert_issue_date_key", str(date.today().year)).strip()
     
-    if not title_val or not given_by_val:
-        st.error("Error: Please fill in Certification Title and Issue By Name fields before clicking 'Add Certificate'.")
+    if not title_val or (not given_by_val and not organization_name_val):
+        st.error("Error: Please fill in Certification Title and at least one issuer field ('Issue By Name' or 'Issuing Organization Name') before clicking 'Add Certificate'.")
         st.session_state.force_rerun_for_add = True 
         return False
 
     new_entry = {
         "title": title_val,
         "given_by": given_by_val,
+        "organization_name": organization_name_val, # New field added to entry
         "issue_date": issue_date_val
     }
     
@@ -429,7 +441,8 @@ def add_certification_entry_handler():
     
     # Reset temp state/widget values
     st.session_state["temp_cert_title_key"] = ""
-    st.session_state["temp_cert_given_by_name_key"] = "" # Resetting the new key
+    st.session_state["temp_cert_given_by_name_key"] = "" 
+    st.session_state["temp_cert_organization_name_key"] = "" # Resetting the new key
     st.session_state["temp_cert_issue_date_key"] = str(date.today().year)
     
     st.session_state.force_rerun_for_add = True 
@@ -689,15 +702,23 @@ def cv_management_tab_content():
         # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
         st.subheader("5. Dynamic Certifications Management")
         
-        col_t, col_g = st.columns(2)
+        col_t, col_g, col_o = st.columns(3) # Added a column for the new field
         with col_t:
             st.text_input("Certification Title", key="temp_cert_title_key", placeholder="e.g., Google Cloud Architect")
             
         with col_g:
-            # *** MODIFICATION HERE ***
+            # Field 1: Issue By Name (Sir/Mam)
             st.text_input(
-                "Issue By Name (Sir/Mam)", # Updated Label
-                key="temp_cert_given_by_name_key", # Updated Key
+                "Issue By Name (Sir/Mam)", 
+                key="temp_cert_given_by_name_key", 
+                placeholder="e.g., Dr. Jane Doe"
+            )
+            
+        with col_o:
+            # Field 2: Issuing Organization Name (NEW)
+            st.text_input(
+                "Issuing Organization Name", 
+                key="temp_cert_organization_name_key", 
                 placeholder="e.g., Coursera, AWS, PMI"
             )
 
@@ -850,11 +871,16 @@ def cv_management_tab_content():
     if st.session_state.cv_form_data['structured_certifications']:
         for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
             
-            expander_title = f"{entry['title']} by {entry['given_by']} (Issued: {entry['issue_date']})"
+            issuer_info = f"{entry.get('given_by', 'N/A')}"
+            if entry.get('organization_name', 'N/A') and entry.get('organization_name', 'N/A') != 'N/A':
+                 issuer_info += f" ({entry.get('organization_name', 'N/A')})"
+            
+            expander_title = f"{entry['title']} by {issuer_info} (Issued: {entry['issue_date']})"
             
             with st.expander(expander_title, expanded=False):
                 st.markdown(f"**Title:** {entry['title']}")
-                st.markdown(f"**Issued By:** {entry['given_by']}")
+                st.markdown(f"**Issued By Name (Sir/Mam):** {entry['given_by']}")
+                st.markdown(f"**Issuing Organization Name:** {entry.get('organization_name', 'N/A')}")
                 st.markdown(f"**Issue Date:** {entry['issue_date']}")
                 
                 # Remove button (OUTSIDE form)
@@ -1124,9 +1150,10 @@ def candidate_dashboard():
     if "temp_exp_ctc_key" not in st.session_state: st.session_state["temp_exp_ctc_key"] = ""
     if "temp_exp_responsibilities_key" not in st.session_state: st.session_state["temp_exp_responsibilities_key"] = ""
 
-    # Initialize widget keys for the "Add New Certification Entry" form (Updated key for "Issue By Name")
+    # Initialize widget keys for the "Add New Certification Entry" form (Updated key for "Issue By Name" and NEW "Organization Name" key)
     if "temp_cert_title_key" not in st.session_state: st.session_state["temp_cert_title_key"] = ""
-    if "temp_cert_given_by_name_key" not in st.session_state: st.session_state["temp_cert_given_by_name_key"] = "" # UPDATED KEY
+    if "temp_cert_given_by_name_key" not in st.session_state: st.session_state["temp_cert_given_by_name_key"] = "" 
+    if "temp_cert_organization_name_key" not in st.session_state: st.session_state["temp_cert_organization_name_key"] = "" # NEW KEY
     if "temp_cert_issue_date_key" not in st.session_state: st.session_state["temp_cert_issue_date_key"] = str(date.today().year)
         
     if "candidate_filter_skills_multiselect" not in st.session_state:
