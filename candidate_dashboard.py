@@ -368,7 +368,7 @@ def format_parsed_json_to_markdown(parsed_data):
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
-    st.info("Fill out the details below to generate a parsed CV that can be used immediately for matching and interview prep, or start by parsing a file in the 'Resume Parsing' tab. **Note: Add Education, Certifications, and Experience entries using the dynamic forms below BEFORE submitting the main form.**")
+    st.info("Fill out the details below to generate a parsed CV. **NOTE: The dynamic lists (Education, Certifications, Experience) are managed *outside* this main form to comply with Streamlit's technical rules. Please use the Add/Remove sections below.**")
 
     # --- Session State Initialization for CV Builder ---
     default_parsed = {
@@ -471,14 +471,15 @@ def cv_management_tab_content():
         # Update session state on submit
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
-        # --- 3. DYNAMIC SECTIONS PLACEHOLDER (Instruct user to use external forms) ---
+        # --- 3. EDUCATION PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("3. Education Details")
-        st.info("⚠️ **Education** is managed using the dynamic 'Add Entry' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
+        st.info("⚠️ **Education** is managed using the dynamic 'Add Entry' form **outside** this main form. Please scroll down to manage entries.")
         
+        # --- 4. CERTIFICATIONS PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("4. Certifications")
-        st.info("⚠️ **Certifications** are managed using the dynamic 'Add Certificate' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
+        st.info("⚠️ **Certifications** are managed using the dynamic 'Add Certificate' form **outside** this main form. Please scroll down to manage entries.")
         
         # --- 5. PROJECTS (Now inside the single form) ---
         st.markdown("---")
@@ -507,7 +508,7 @@ def cv_management_tab_content():
         # --- 7. EXPERIENCE PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("7. Professional Experience")
-        st.info("⚠️ **Experience** is managed using the dynamic 'Add Experience' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
+        st.info("⚠️ **Experience** is managed using the dynamic 'Add Experience' form **outside** this main form. Please scroll down to manage entries.")
         
         # CRITICAL: The submit button is ONLY placed here, inside the one form block.
         st.markdown("---")
@@ -559,7 +560,9 @@ def cv_management_tab_content():
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
         
     
+    # -------------------------------------------------------------------------
     # --- DYNAMIC EDUCATION SECTION (OUTSIDE the main form - Corresponds to Section 3) ---
+    # -------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("🎓 **Dynamic Education Management**")
     st.markdown("Use the fields below to add structured education entries one by one.")
@@ -707,7 +710,9 @@ def cv_management_tab_content():
 
 
     
+    # -------------------------------------------------------------------------
     # --- DYNAMIC CERTIFICATION SECTION (OUTSIDE the main form - Corresponds to Section 4) ---
+    # -------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("🏅 **Dynamic Certifications Management**")
     st.markdown("Use the fields below to add structured certification entries one by one.")
@@ -792,7 +797,9 @@ def cv_management_tab_content():
         st.info("No certifications added yet.")
 
     
+    # -------------------------------------------------------------------------
     # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE the main form - Corresponds to Section 7) ---
+    # -------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("💼 **Dynamic Professional Experience Management**")
     st.markdown("Use the fields below to add structured experience entries one by one.")
