@@ -104,7 +104,7 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         {
             "title": "AWS Certified Cloud Practitioner", 
             "given_by": "Dr. Smith", 
-            "organization_name": "Amazon Web Services", # Added new field
+            "organization_name": "Amazon Web Services", 
             "issue_date": "2023-10-01"
         }
     ]
@@ -516,7 +516,7 @@ def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("""
-    **CV Builder Workflow:** Fill in the dynamic entry data (e.g., Education) and click the corresponding **'Add Entry'** button to save it. Repeat for all entries. When finished, click the final **'Generate and Load ALL CV Data'** button to finalize all sections.
+    **CV Builder Workflow:** Fill in the dynamic entry data (e.g., Education) and click the corresponding **'Add Entry'** button to save it. Repeat for all entries. The current entries are listed right below their respective input sections. When finished, click the final **'Generate and Load ALL CV Data'** button to finalize all sections.
     """)
 
     # --- Session State Initialization for CV Builder ---
@@ -661,6 +661,16 @@ def cv_management_tab_content():
         # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
         add_edu_button = st.form_submit_button("➕ Add Education Entry (Submits Form)", key="add_edu_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
         
+        
+        # --- DYNAMIC EDUCATION DISPLAY (MOVED INSIDE THE FORM, BUT NO REMOVE BUTTONS HERE) ---
+        st.markdown("##### 🎓 Current Education Entries (Removal buttons are listed below the main form)")
+        if st.session_state.cv_form_data['structured_education']:
+            for i, entry in enumerate(st.session_state.cv_form_data['structured_education']):
+                score_display = f"{entry.get('score', 'N/A')} {entry.get('type', '')}".strip()
+                st.markdown(f"- **{entry['degree']}** - {entry.get('college', 'N/A')} ({entry['from_year']} - {entry['to_year']}) | Score: {score_display}")
+        else:
+            st.info("No education entries added yet.")
+            
         st.markdown("---") 
         
         # --- 4. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON (Moved inside the form) ---
@@ -697,6 +707,15 @@ def cv_management_tab_content():
         # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
         add_exp_button = st.form_submit_button("➕ Add This Experience (Submits Form)", key="add_exp_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
         
+        # --- DYNAMIC EXPERIENCE DISPLAY (MOVED INSIDE THE FORM, BUT NO REMOVE BUTTONS HERE) ---
+        st.markdown("##### 💼 Current Professional Experience Entries (Removal buttons are listed below the main form)")
+        if st.session_state.cv_form_data['structured_experience']:
+            for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
+                st.markdown(f"- **{entry['role']}** at {entry['company']} ({entry['from_year']} - {entry['to_year']}) | CTC: {entry['ctc']}")
+                
+        else:
+            st.info("No experience entries added yet.")
+            
         st.markdown("---") 
 
         # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
@@ -728,6 +747,17 @@ def cv_management_tab_content():
 
         # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
         add_cert_button = st.form_submit_button("➕ Add Certificate (Submits Form)", key="add_cert_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
+
+        # --- DYNAMIC CERTIFICATION DISPLAY (MOVED INSIDE THE FORM, BUT NO REMOVE BUTTONS HERE) ---
+        st.markdown("##### 🏅 Current Certifications (Removal buttons are listed below the main form)")
+        if st.session_state.cv_form_data['structured_certifications']:
+            for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
+                issuer_info = f"{entry.get('given_by', 'N/A')}"
+                if entry.get('organization_name', 'N/A') and entry.get('organization_name', 'N/A') != 'N/A':
+                    issuer_info += f" ({entry.get('organization_name', 'N/A')})"
+                st.markdown(f"- **{entry['title']}** by {issuer_info} (Issued: {entry['issue_date']})")
+        else:
+            st.info("No certifications added yet.")
 
         st.markdown("---")
         
@@ -823,70 +853,62 @@ def cv_management_tab_content():
         st.rerun() # Force rerun to clear inputs and display list update
         
     
-    # --- DYNAMIC EDUCATION DISPLAY (Outside the form for cleaner button behavior) ---
+    # --- DYNAMIC REMOVE BUTTONS (MUST BE OUTSIDE THE FORM) ---
+    
     st.markdown("---")
-    st.subheader("🎓 **Current Education Entries**")
+    st.subheader("🗑️ **Manage Education Entries (Remove)**")
+    st.caption("Click a button below to instantly remove the corresponding entry.")
+    
     if st.session_state.cv_form_data['structured_education']:
         for i, entry in enumerate(st.session_state.cv_form_data['structured_education']):
             score_display = f"{entry.get('score', 'N/A')} {entry.get('type', '')}".strip()
-            expander_title = f"{entry['degree']} - {score_display} ({entry['from_year']} - {entry['to_year']})"
-            
-            with st.expander(expander_title, expanded=False):
-                st.markdown(f"**Degree:** {entry['degree']}")
-                st.markdown(f"**College:** {entry['college']}")
-                st.markdown(f"**University:** {entry['university']}")
-                st.markdown(f"**Duration:** {entry['from_year']} - {entry['to_year']}")
-                st.markdown(f"**Score:** {score_display}")
-                
-                # Remove button (OUTSIDE form)
-                st.button("❌ Remove Education Entry", key=f"remove_edu_{i}", on_click=remove_education_entry, args=(i,), type="secondary") 
+            # Remove button (OUTSIDE form)
+            st.button(f"❌ Remove: {entry['degree']} - {entry.get('college', 'N/A')} ({entry['from_year']} - {entry['to_year']})", 
+                      key=f"remove_edu_{i}", 
+                      on_click=remove_education_entry, 
+                      args=(i,), 
+                      type="secondary",
+                      use_container_width=True) 
     else:
-        st.info("No education entries added yet.")
-
-
-    # --- DYNAMIC EXPERIENCE DISPLAY (Outside the form for cleaner button behavior) ---
-    st.markdown("---")
-    st.subheader("💼 **Current Professional Experience Entries**")
-    if st.session_state.cv_form_data['structured_experience']:
-        for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
-            
-            expander_title = f"{entry['role']} at {entry['company']} ({entry['from_year']} - {entry['to_year']})"
-            
-            with st.expander(expander_title, expanded=False):
-                col_disp_1, col_disp_2, col_disp_3 = st.columns([1, 1, 0.5])
-                col_disp_1.markdown(f"**Role:** {entry['role']}")
-                col_disp_2.markdown(f"**Duration:** {entry['from_year']} - {entry['to_year']}")
-                col_disp_3.markdown(f"**CTC:** {entry['ctc']}")
-                st.markdown(f"**Responsibilities:** {entry['responsibilities']}")
-                
-                # Remove button (OUTSIDE form)
-                st.button("❌ Remove Experience Entry", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="secondary") 
-    else:
-        st.info("No experience entries added yet.")
+        st.info("No education entries to remove.")
 
     
-    # --- DYNAMIC CERTIFICATION DISPLAY (Outside the form for cleaner button behavior) ---
     st.markdown("---")
-    st.subheader("🏅 **Current Certifications**")
+    st.subheader("🗑️ **Manage Professional Experience Entries (Remove)**")
+    st.caption("Click a button below to instantly remove the corresponding entry.")
+    
+    if st.session_state.cv_form_data['structured_experience']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
+            # Remove button (OUTSIDE form)
+            st.button(f"❌ Remove: {entry['role']} at {entry['company']} ({entry['from_year']} - {entry['to_year']})", 
+                      key=f"remove_exp_{i}", 
+                      on_click=remove_experience_entry, 
+                      args=(i,), 
+                      type="secondary",
+                      use_container_width=True) 
+    else:
+        st.info("No experience entries to remove.")
+
+    
+    st.markdown("---")
+    st.subheader("🗑️ **Manage Certifications (Remove)**")
+    st.caption("Click a button below to instantly remove the corresponding entry.")
+
     if st.session_state.cv_form_data['structured_certifications']:
         for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
-            
             issuer_info = f"{entry.get('given_by', 'N/A')}"
             if entry.get('organization_name', 'N/A') and entry.get('organization_name', 'N/A') != 'N/A':
                  issuer_info += f" ({entry.get('organization_name', 'N/A')})"
-            
-            expander_title = f"{entry['title']} by {issuer_info} (Issued: {entry['issue_date']})"
-            
-            with st.expander(expander_title, expanded=False):
-                st.markdown(f"**Title:** {entry['title']}")
-                st.markdown(f"**Issued By Name (Sir/Mam):** {entry['given_by']}")
-                st.markdown(f"**Issuing Organization Name:** {entry.get('organization_name', 'N/A')}")
-                st.markdown(f"**Issue Date:** {entry['issue_date']}")
-                
-                # Remove button (OUTSIDE form)
-                st.button("❌ Remove Certificate", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
+                 
+            # Remove button (OUTSIDE form)
+            st.button(f"❌ Remove: {entry['title']} by {issuer_info} (Issued: {entry['issue_date']})", 
+                      key=f"remove_cert_{i}", 
+                      on_click=remove_certification_entry, 
+                      args=(i,), 
+                      type="secondary",
+                      use_container_width=True) 
     else:
-        st.info("No certifications added yet.")
+        st.info("No certifications to remove.")
 
     
     # --- CV Preview and Download ---
