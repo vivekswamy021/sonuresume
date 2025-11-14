@@ -296,7 +296,7 @@ def add_experience_entry(company, role, ctc, project, date_from, date_to, state_
 
 def add_certification_entry(name, title, given_by, received_by, course, date_val, state_key='form_certifications'):
     """
-    Callback function to add a structured certification entry to session state. (NEW FUNCTION)
+    Callback function to add a structured certification entry to session state.
     """
     if not name or not title or not given_by or not course:
         st.error("Please fill in **Name**, **Title**, **Given By**, and **Course**.")
@@ -317,6 +317,38 @@ def add_certification_entry(name, title, given_by, received_by, course, date_val
     st.session_state[state_key].append(entry)
     st.toast(f"Added Certification: {name} ({title})")
 
+def add_project_entry(name, description, technologies, app_link, state_key='form_projects'):
+    """
+    Callback function to add a structured project entry to session state.
+    """
+    if not name or not description or not technologies:
+        st.error("Please fill in **Project Name**, **Description**, and **Technologies Used**.")
+        return
+        
+    entry = {
+        "name": name,
+        "description": description,
+        # Split technologies by comma and strip whitespace
+        "technologies": [t.strip() for t in technologies.split(',') if t.strip()], 
+        "app_link": app_link if app_link else "N/A"
+    }
+    
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+        
+    st.session_state[state_key].append(entry)
+    st.toast(f"Added Project: {name}")
+
+def remove_project_entry(index, state_key='form_projects'):
+    """
+    Callback function to remove a project entry by index.
+    """
+    if 0 <= index < len(st.session_state.get(state_key, [])):
+        removed_name = st.session_state[state_key][index]['name']
+        del st.session_state[state_key][index]
+        st.toast(f"Removed Project: {removed_name}")
+        st.rerun() # Rerun to update the display immediately
+
 
 # -------------------------
 # TAB FUNCTIONS
@@ -331,8 +363,10 @@ def tab_cv_management():
         st.session_state.form_education = []
     if "form_experience" not in st.session_state: 
         st.session_state.form_experience = []
-    if "form_certifications" not in st.session_state: # NEW State for certifications builder
+    if "form_certifications" not in st.session_state:
         st.session_state.form_certifications = []
+    if "form_projects" not in st.session_state: # NEW State for projects builder
+        st.session_state.form_projects = []
 
     tab_upload, tab_form, tab_view = st.tabs(["Upload & Parse Resume", "Prepare your CV (Form-Based)", "View Saved CVs"])
 
@@ -487,7 +521,7 @@ def tab_cv_management():
             education_list = []
         
         # -----------------------------
-        # NEW: CERTIFICATIONS SECTION
+        # 5. CERTIFICATIONS SECTION
         # -----------------------------
         st.markdown("#### 5. Certifications")
         
@@ -526,6 +560,53 @@ def tab_cv_management():
                 st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
         else:
             certifications_list = []
+        
+        # -----------------------------
+        # 6. PROJECTS SECTION (NEW)
+        # -----------------------------
+        st.markdown("#### 6. Projects")
+        
+        with st.form("form_project_entry", clear_on_submit=True):
+            new_project_name = st.text_input("Project Name", key="form_new_project_name")
+            new_project_description = st.text_area("Description of Project", height=100, key="form_new_project_description")
+                
+            col_tech, col_link = st.columns(2)
+            with col_tech:
+                new_technologies = st.text_input("Technologies Used (Comma separated list, e.g., Python, SQL, Streamlit)", key="form_new_technologies")
+            with col_link:
+                new_app_link = st.text_input("App Link / Repository URL (Optional)", key="form_new_app_link")
+
+            if st.form_submit_button("Add Project to CV"):
+                add_project_entry(
+                    new_project_name.strip(), 
+                    new_project_description.strip(), 
+                    new_technologies.strip(), 
+                    new_app_link.strip(),
+                    state_key='form_projects'
+                )
+
+        if st.session_state.form_projects:
+            st.markdown("##### Current Project Entries:")
+            projects_list = st.session_state.form_projects
+            
+            for i, entry in enumerate(projects_list):
+                # Use a container for better visual grouping of the project and its remove button
+                with st.container(border=True):
+                    st.markdown(f"**{i+1}. {entry['name']}**")
+                    st.caption(f"Technologies: {', '.join(entry['technologies'])}")
+                    st.markdown(f"Description: *{entry['description']}*")
+                    if entry['app_link'] != "N/A":
+                        st.markdown(f"Link: [{entry['app_link']}]({entry['app_link']})")
+                    
+                    st.button(
+                        "Remove Project", 
+                        key=f"remove_project_{i}", 
+                        on_click=remove_project_entry, 
+                        args=(i, 'form_projects'),
+                        type="secondary"
+                    )
+        else:
+            projects_list = []
         # -----------------------------
         
         # --- Final Save Button ---
@@ -547,8 +628,8 @@ def tab_cv_management():
                     "skills": [s.strip() for s in form_skills.split('\n') if s.strip()],
                     "education": education_list, 
                     "experience": experience_list, 
-                    "certifications": certifications_list, # Include the new certifications list
-                    "projects": "N/A (Can be added manually in JSON if needed)"
+                    "certifications": certifications_list, 
+                    "projects": projects_list # Include the new projects list
                 }
                 
                 st.session_state.managed_cvs[cv_key_name] = final_cv_data
@@ -556,6 +637,7 @@ def tab_cv_management():
                 st.session_state.form_education = [] # Clear the temporary states
                 st.session_state.form_experience = [] 
                 st.session_state.form_certifications = []
+                st.session_state.form_projects = [] # Clear the new temporary state
                 st.success(f"🎉 CV **'{cv_key_name}'** created from form and saved!")
                 st.rerun()
 
@@ -875,7 +957,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -890,7 +972,8 @@ def candidate_dashboard():
     if "manual_education" not in st.session_state: st.session_state.manual_education = [] # Temp for Analyzer
     if "form_education" not in st.session_state: st.session_state.form_education = [] # Temp for CV Form Builder Education
     if "form_experience" not in st.session_state: st.session_state.form_experience = [] # Temp for CV Form Builder Experience
-    if "form_certifications" not in st.session_state: st.session_state.form_certifications = [] # Temp for CV Form Builder Certifications (NEW)
+    if "form_certifications" not in st.session_state: st.session_state.form_certifications = [] # Temp for CV Form Builder Certifications
+    if "form_projects" not in st.session_state: st.session_state.form_projects = [] # Temp for CV Form Builder Projects (NEW)
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
 
