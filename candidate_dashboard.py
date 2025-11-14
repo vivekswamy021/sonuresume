@@ -47,22 +47,32 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     
     Updated default structured experience and education.
     """
-    if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
-         return {"parsed": st.session_state.parsed, "full_text": st.session_state.full_text, "excel_data": None, "name": st.session_state.parsed['name']}
+    
+    # Check if data already exists (to prevent resetting if called redundantly)
+    # NOTE: In a real app, the parsing API handles this. For the stub, we simulate a fresh parse.
     
     if source_type == 'file':
         name_from_file = getattr(file_input, 'name', 'Uploaded_Resume').split('.')[0].replace('_', ' ')
     else:
         name_from_file = "Parsed Text CV"
         
+    # --- Simulated Parsed Data ---
     default_structured_experience = [
         {
-            "company": "Prgayan AI", 
+            "company": "Prgayan AI Solutions", 
             "role": "AIML Engineer", 
             "from_year": "2025", 
             "to_year": "Present", 
             "ctc": "Negotiable", 
-            "responsibilities": "Developing and deploying AI/ML models for NLP and Computer Vision projects."
+            "responsibilities": "Developing and deploying scalable AI/ML models for NLP and Computer Vision projects, resulting in 20% efficiency gain."
+        },
+        {
+            "company": "Tech Innovations Inc.", 
+            "role": "Junior Data Analyst", 
+            "from_year": "2023", 
+            "to_year": "2024", 
+            "ctc": "Confidential", 
+            "responsibilities": "Analyzed large datasets using SQL and Python, creating dashboards for executive decision-making."
         },
     ]
     
@@ -76,6 +86,15 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
             "score": "8.5",
             "type": "CGPA"
         },
+        {
+            "degree": "B.Tech Information Technology", 
+            "college": "National Institute of Tech", 
+            "university": "State University",
+            "from_year": "2016",
+            "to_year": "2020",
+            "score": "90",
+            "type": "Percentage"
+        },
     ]
     
     default_structured_certifications = [
@@ -83,7 +102,12 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
             "title": "AWS Certified Cloud Practitioner", 
             "given_by": "Amazon Web Services", 
             "issue_date": "2023-10-01"
-        }
+        },
+        {
+            "title": "Professional Scrum Master I", 
+            "given_by": "Scrum.org", 
+            "issue_date": "2022-05-20"
+        },
     ]
     
     parsed_data = {
@@ -92,17 +116,18 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "phone": "555-123-4567",
         "linkedin": "linkedin.com/in/candidate", 
         "github": "github.com/candidate",
-        "skills": ["Python", "Machine Learning", "Streamlit", "Data Analysis", "TensorFlow"], 
+        "skills": ["Python", "Machine Learning", "Streamlit", "SQL", "Cloud Computing (AWS)", "TensorFlow", "Agile/Scrum"], 
         "experience": default_structured_experience, 
-        "structured_experience": default_structured_experience, 
+        "structured_experience": default_structured_experience, # Duplicated for form compatibility
         "education": default_structured_education, 
-        "structured_education": default_structured_education, 
+        "structured_education": default_structured_education, # Duplicated for form compatibility
         "certifications": default_structured_certifications, 
-        "structured_certifications": default_structured_certifications, 
-        "projects": ["Built this Streamlit Dashboard"], 
-        "strength": ["Problem Solver", "Quick Learner"], 
-        "personal_details": "Highly motivated and results-oriented professional with 3+ years experience in AIML."
+        "structured_certifications": default_structured_certifications, # Duplicated for form compatibility
+        "projects": ["Built this Streamlit Dashboard", "NLP Sentiment Analyzer", "Image Classification Model"], 
+        "strength": ["Problem Solver", "Quick Learner", "Team Player", "Attention to Detail"], 
+        "personal_details": "Highly motivated and results-oriented professional with 3+ years experience in AIML, specializing in scalable cloud deployments and data analysis."
     }
+    # --- End Simulated Parsed Data ---
     
     compiled_text = ""
     for k, v in parsed_data.items():
@@ -144,7 +169,7 @@ Education Match: 90% (Based on B.Tech and M.Sc. degrees)
 
 Strengths/Matches:
 - Candidate's Python and ML skills ({skills}%) are an excellent match for this JD.
-- Experience ({experience}%) is relevant, particularly the **AIML Engineer at Prgayan AI** role.
+- Experience ({experience}%) is relevant, particularly the **AIML Engineer at Prgayan AI Solutions** role.
 - Education is a **Strong** match with advanced degrees listed.
 
 Gaps/Areas for Improvement:
@@ -213,7 +238,7 @@ Feedback:
 ---
 ## Final Assessment
 Total Score: {total_score}/{len(qa_list) * 10}
-Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects from the Prgayan AI role).
+Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects from the Prgayan AI Solutions role).
 """)
     
     return "\n".join(feedback_parts)
@@ -384,25 +409,25 @@ def cv_management_tab_content():
         "structured_education": []
     }
     
+    # Initialize/Sync cv_form_data on first run or when session state page changes
     if "cv_form_data" not in st.session_state:
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
+            # Copy parsed data if available
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            # Ensure the structured lists are present
-            if 'structured_experience' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
-            if 'structured_certifications' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
-            if 'structured_education' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
+            
+            # CRITICAL: Ensure structured lists are taken from the parsed data
+            st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
+            st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
+            st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
         else:
             st.session_state.cv_form_data = default_parsed
             
-    # CRITICAL: Ensure lists are initialized correctly
-    if 'structured_experience' not in st.session_state.cv_form_data:
+    # CRITICAL: Ensure lists are initialized correctly, especially if the user starts here without parsing
+    if not isinstance(st.session_state.cv_form_data.get('structured_experience'), list):
          st.session_state.cv_form_data['structured_experience'] = []
-    if 'structured_certifications' not in st.session_state.cv_form_data:
+    if not isinstance(st.session_state.cv_form_data.get('structured_certifications'), list):
          st.session_state.cv_form_data['structured_certifications'] = []
-    if 'structured_education' not in st.session_state.cv_form_data:
+    if not isinstance(st.session_state.cv_form_data.get('structured_education'), list):
          st.session_state.cv_form_data['structured_education'] = []
     if not isinstance(st.session_state.cv_form_data.get('skills'), list):
          st.session_state.cv_form_data['skills'] = []
@@ -480,7 +505,6 @@ def cv_management_tab_content():
         st.info("Use the dedicated mini-form below to add each Education entry.")
         
         # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Placeholder & Mini-Form) ---
-        # MOVED HERE (after Education) as requested in previous iterations
         st.markdown("---")
         st.subheader("4. Dynamic Professional Experience Management")
         st.info("Use the dedicated mini-form below to add each Experience entry.")
@@ -1149,18 +1173,20 @@ def candidate_dashboard():
             )
             st.markdown("---")
 
+            file_to_parse = None
             if uploaded_file is not None:
+                # Store the file reference
                 if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
                     st.session_state.candidate_uploaded_resumes = [uploaded_file] 
                     st.session_state.pasted_cv_text = ""
                     st.toast("Resume file uploaded successfully.")
+                file_to_parse = st.session_state.candidate_uploaded_resumes[0]
             elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
                 st.session_state.candidate_uploaded_resumes = []
                 st.session_state.parsed = {}
                 st.session_state.full_text = ""
                 st.toast("Upload cleared.")
             
-            file_to_parse = st.session_state.candidate_uploaded_resumes[0] if st.session_state.candidate_uploaded_resumes else None
             
             st.markdown("### 2. Parse Uploaded File")
             
@@ -1170,14 +1196,22 @@ def candidate_dashboard():
                         result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
                         
                         if "error" not in result:
+                            # 1. Update main parsed state
                             st.session_state.parsed = result['parsed']
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
-                            st.session_state.cv_form_data = st.session_state.parsed.copy() 
+                            
+                            # 2. FIX: Synchronize structured lists for CV Management forms
+                            st.session_state.cv_form_data = st.session_state.parsed.copy()
+                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('structured_experience', st.session_state.parsed.get('experience', []))
+                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('structured_certifications', st.session_state.parsed.get('certifications', []))
+                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('structured_education', st.session_state.parsed.get('education', []))
+                            
                             clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
+                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**. View, edit, and download the data in the **CV Management** tab.") 
+                            # Force a rerun to update the CV Management tab UI immediately
+                            st.rerun() 
                         else:
                             st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
                             st.session_state.parsed = {"error": result['error'], "name": result['name']}
@@ -1207,14 +1241,22 @@ def candidate_dashboard():
                         result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
                         
                         if "error" not in result:
+                            # 1. Update main parsed state
                             st.session_state.parsed = result['parsed']
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
-                            st.session_state.cv_form_data = st.session_state.parsed.copy() 
+                            
+                            # 2. FIX: Synchronize structured lists for CV Management forms
+                            st.session_state.cv_form_data = st.session_state.parsed.copy()
+                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('structured_experience', st.session_state.parsed.get('experience', []))
+                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('structured_certifications', st.session_state.parsed.get('certifications', []))
+                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('structured_education', st.session_state.parsed.get('education', []))
+                            
                             clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
+                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**. View, edit, and download the data in the **CV Management** tab.")
+                            # Force a rerun to update the CV Management tab UI immediately
+                            st.rerun() 
                         else:
                             st.error(f"Parsing failed: {result['error']}")
                             st.session_state.parsed = {"error": result['error'], "name": result['name']}
