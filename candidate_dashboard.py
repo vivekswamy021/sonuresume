@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from groq import Groq
 from dotenv import load_dotenv
-from pypdf import PdfReader
+from pypdf import Pdfplumber # This is the fixed module import
 import io
 import time
 
