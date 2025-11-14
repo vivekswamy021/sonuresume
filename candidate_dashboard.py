@@ -364,6 +364,52 @@ def format_parsed_json_to_markdown(parsed_data):
     md += "- " + "\n- ".join(parsed_data.get('strength', ['No strengths listed']) if all(isinstance(s, str) for s in parsed_data.get('strength', [])) else ["Strengths list structure mismatch"])
     
     return md
+    
+def load_and_generate_cv_data():
+    """
+    Synchronizes temporary inputs (Skills, Projects, Strengths) and structured 
+    data (Education, Experience, Certs) into the main 'parsed' state 
+    for the AI tools to use.
+    """
+    
+    # 1. Synchronization (Static Fields)
+    # The static fields are already synced to st.session_state.cv_form_data 
+    # as soon as they are changed, thanks to the use of st.text_input outside a form.
+    
+    # 2. Synchronization (Structured Dynamic Fields)
+    st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
+    st.session_state.cv_form_data['certifications'] = st.session_state.cv_form_data.get('structured_certifications', [])
+    st.session_state.cv_form_data['education'] = st.session_state.cv_form_data.get('structured_education', [])
+    
+    # 3. Update the main parsed state
+    st.session_state.parsed = st.session_state.cv_form_data.copy()
+    
+    # 4. Create a placeholder full_text for the AI tools
+    compiled_text = ""
+    EXCLUDE_KEYS = ["structured_experience", "structured_certifications", "structured_education"] 
+    
+    for k, v in st.session_state.cv_form_data.items():
+        if k in EXCLUDE_KEYS: continue
+        
+        if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
+            compiled_text += f"{k.replace('_', ' ').title()}:\n"
+            if isinstance(v, list):
+                if all(isinstance(item, dict) for item in v):
+                     compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
+                elif all(isinstance(item, str) for item in v):
+                    compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+            else:
+                compiled_text += str(v) + "\n\n"
+                
+    st.session_state.full_text = compiled_text
+    
+    # 5. Reset matching/interview state
+    st.session_state.candidate_match_results = []
+    st.session_state.interview_qa = []
+    st.session_state.evaluation_report = ""
+
+    st.success(f"✅ CV data for **{st.session_state.parsed.get('name', 'Candidate')}** successfully generated and loaded! All major sections are stored as **structured data**.")
+    
 
 # ==============================================================================
 # 2. TAB CONTENT FUNCTIONS (Updated CV Management with Mini-Forms)
@@ -385,9 +431,10 @@ def cv_management_tab_content():
     }
     
     if "cv_form_data" not in st.session_state:
+        # Load from parsed if it exists
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            # Ensure the structured lists are present
+            # Ensure the structured lists are present/correctly initialized
             if 'structured_experience' not in st.session_state.cv_form_data:
                 st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
             if 'structured_certifications' not in st.session_state.cv_form_data:
@@ -414,152 +461,119 @@ def cv_management_tab_content():
     year_options = [str(y) for y in range(current_year, 1950, -1)]
 
     # ==============================================================
-    # --- 1. MAIN CV BUILDER FORM (Static Fields + Final Submit) ---
+    # --- 1. CV BUILDER (Standalone Widgets replacing the Form) ---
     # ==============================================================
-    with st.form("cv_builder_form", clear_on_submit=False):
         
-        # --- 1. PERSONAL & CONTACT DETAILS ---
-        st.subheader("1. Personal, Contact, and Summary Details")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.session_state.cv_form_data['name'] = st.text_input(
-                "Full Name", 
-                value=st.session_state.cv_form_data['name'], 
-                key="cv_name_input"
-            ).strip() 
-        with col2:
-            st.session_state.cv_form_data['email'] = st.text_input(
-                "Email Address", 
-                value=st.session_state.cv_form_data['email'], 
-                key="cv_email_input"
-            ).strip() 
-        with col3:
-            st.session_state.cv_form_data['phone'] = st.text_input(
-                "Phone Number", 
-                value=st.session_state.cv_form_data['phone'], 
-                key="cv_phone_input"
-            ).strip() 
-        
-        col4, col5 = st.columns(2)
-        with col4:
-            st.session_state.cv_form_data['linkedin'] = st.text_input(
-                "LinkedIn Profile URL", 
-                value=st.session_state.cv_form_data.get('linkedin', ''), 
-                key="cv_linkedin_input"
-            ).strip() 
-        with col5:
-            st.session_state.cv_form_data['github'] = st.text_input(
-                "GitHub Profile URL", 
-                value=st.session_state.cv_form_data.get('github', ''), 
-                key="cv_github_input"
-            ).strip() 
-        
-        st.session_state.cv_form_data['personal_details'] = st.text_area(
-            "Professional Summary (A brief pitch about yourself)", 
-            value=st.session_state.cv_form_data.get('personal_details', ''), 
-            height=100,
-            key="cv_personal_details_input"
+    # --- 1. PERSONAL & CONTACT DETAILS (Must update state on change) ---
+    st.subheader("1. Personal, Contact, and Summary Details")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.cv_form_data['name'] = st.text_input(
+            "Full Name", 
+            value=st.session_state.cv_form_data.get('name', ''), 
+            key="cv_name_input"
         ).strip() 
-        
-        # --- 2. SKILLS ---
-        st.markdown("---")
-        st.subheader("2. Key Skills (One Item per Line)")
-
-        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
-        new_skills_text = st.text_area(
-            "Technical and Soft Skills", 
-            value=skills_text,
-            height=100,
-            key="cv_skills_input_form" 
-        )
-        st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
-        
-        # --- 3. DYNAMIC EDUCATION MANAGEMENT (Placeholder & Mini-Form) ---
-        st.markdown("---")
-        st.subheader("3. Dynamic Education Management")
-        st.info("Use the dedicated mini-form below to add each Education entry.")
-        
-        # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Placeholder & Mini-Form) ---
-        # MOVED HERE (after Education) as requested in previous iterations
-        st.markdown("---")
-        st.subheader("4. Dynamic Professional Experience Management")
-        st.info("Use the dedicated mini-form below to add each Experience entry.")
-        
-        # --- 5. DYNAMIC CERTIFICATIONS MANAGEMENT (Placeholder & Mini-Form) ---
-        st.markdown("---")
-        st.subheader("5. Dynamic Certifications Management")
-        st.info("Use the dedicated mini-form below to add each Certificate entry.")
-
-        # --- 6. PROJECTS (Static inside the single form) ---
-        st.markdown("---")
-        st.subheader("6. Projects (One Item per Line)")
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
-        new_projects_text = st.text_area(
-            "Projects (Name, Description, Technologies)", 
-            value=projects_text,
-            height=100,
-            key="cv_projects_input_form"
-        )
-        st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
-
-        # --- 7. STRENGTHS (Static inside the single form) ---
-        st.markdown("---")
-        st.subheader("7. Strengths (One Item per Line)")
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
-        new_strength_text = st.text_area(
-            "Key Personal Qualities", 
-            value=strength_text,
-            height=70,
-            key="cv_strength_input_form"
-        )
-        st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
-
-        # CRITICAL: The submit button is ONLY placed here, inside the one form block.
-        st.markdown("---")
-        st.subheader("8. Generate or Load ALL CV Data")
-        st.warning("Ensure you have added all Education, Certifications, and Experience entries using their respective **Add** buttons before clicking this final button!")
-        submit_form_button = st.form_submit_button("Generate and Load ALL CV Data", type="primary", use_container_width=True)
-
+    with col2:
+        st.session_state.cv_form_data['email'] = st.text_input(
+            "Email Address", 
+            value=st.session_state.cv_form_data.get('email', ''), 
+            key="cv_email_input"
+        ).strip() 
+    with col3:
+        st.session_state.cv_form_data['phone'] = st.text_input(
+            "Phone Number", 
+            value=st.session_state.cv_form_data.get('phone', ''), 
+            key="cv_phone_input"
+        ).strip() 
     
-    # --- FINAL SUBMISSION LOGIC (for the main form) ---
-    if submit_form_button:
-        if not st.session_state.cv_form_data['name'] or not st.session_state.cv_form_data['email']:
+    col4, col5 = st.columns(2)
+    with col4:
+        st.session_state.cv_form_data['linkedin'] = st.text_input(
+            "LinkedIn Profile URL", 
+            value=st.session_state.cv_form_data.get('linkedin', ''), 
+            key="cv_linkedin_input"
+        ).strip() 
+    with col5:
+        st.session_state.cv_form_data['github'] = st.text_input(
+            "GitHub Profile URL", 
+            value=st.session_state.cv_form_data.get('github', ''), 
+            key="cv_github_input"
+        ).strip() 
+    
+    st.session_state.cv_form_data['personal_details'] = st.text_area(
+        "Professional Summary (A brief pitch about yourself)", 
+        value=st.session_state.cv_form_data.get('personal_details', ''), 
+        height=100,
+        key="cv_personal_details_input"
+    ).strip() 
+    
+    # --- 2. SKILLS (Must update state on change) ---
+    st.markdown("---")
+    st.subheader("2. Key Skills (One Item per Line)")
+
+    skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
+    new_skills_text = st.text_area(
+        "Technical and Soft Skills", 
+        value=skills_text,
+        height=100,
+        key="cv_skills_input_form" 
+    )
+    # Immediate synchronization of list-based inputs
+    st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
+    
+    # --- 3. DYNAMIC EDUCATION MANAGEMENT (Placeholder & Mini-Form) ---
+    st.markdown("---")
+    st.subheader("3. Dynamic Education Management")
+    st.info("Use the dedicated mini-form below to add each Education entry.")
+    
+    # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Placeholder & Mini-Form) ---
+    st.markdown("---")
+    st.subheader("4. Dynamic Professional Experience Management")
+    st.info("Use the dedicated mini-form below to add each Experience entry.")
+    
+    # --- 5. DYNAMIC CERTIFICATIONS MANAGEMENT (Placeholder & Mini-Form) ---
+    st.markdown("---")
+    st.subheader("5. Dynamic Certifications Management")
+    st.info("Use the dedicated mini-form below to add each Certificate entry.")
+
+    # --- 6. PROJECTS (Must update state on change) ---
+    st.markdown("---")
+    st.subheader("6. Projects (One Item per Line)")
+    projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+    new_projects_text = st.text_area(
+        "Projects (Name, Description, Technologies)", 
+        value=projects_text,
+        height=100,
+        key="cv_projects_input_form"
+    )
+    # Immediate synchronization of list-based inputs
+    st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
+
+    # --- 7. STRENGTHS (Must update state on change) ---
+    st.markdown("---")
+    st.subheader("7. Strengths (One Item per Line)")
+    strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+    new_strength_text = st.text_area(
+        "Key Personal Qualities", 
+        value=strength_text,
+        height=70,
+        key="cv_strength_input_form"
+    )
+    # Immediate synchronization of list-based inputs
+    st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
+
+    # ==============================================================
+    # --- 8. GENERATE/LOAD BUTTON (Placed outside the form) ---
+    # ==============================================================
+    st.markdown("---")
+    st.subheader("8. Generate or Load ALL CV Data")
+    st.warning("Ensure you have added all Education, Certifications, and Experience entries using their respective **Add** buttons before clicking this final button!")
+
+    if st.button("Generate and Load ALL CV Data", type="primary", use_container_width=True):
+        if not st.session_state.cv_form_data.get('name') or not st.session_state.cv_form_data.get('email'):
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
-
-        # 1. Synchronize the structured lists into the main keys for AI consumption
-        st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
-        st.session_state.cv_form_data['certifications'] = st.session_state.cv_form_data.get('structured_certifications', [])
-        st.session_state.cv_form_data['education'] = st.session_state.cv_form_data.get('structured_education', [])
-        
-        # 2. Update the main parsed state
-        st.session_state.parsed = st.session_state.cv_form_data.copy()
-        
-        # 3. Create a placeholder full_text for the AI tools
-        compiled_text = ""
-        EXCLUDE_KEYS = ["structured_experience", "structured_certifications", "structured_education"] 
-        
-        for k, v in st.session_state.cv_form_data.items():
-            if k in EXCLUDE_KEYS: continue
-            
-            if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
-                compiled_text += f"{k.replace('_', ' ').title()}:\n"
-                if isinstance(v, list):
-                    if all(isinstance(item, dict) for item in v):
-                         compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
-                    elif all(isinstance(item, str) for item in v):
-                        compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
-                else:
-                    compiled_text += str(v) + "\n\n"
-                    
-        st.session_state.full_text = compiled_text
-        
-        # 4. Reset matching/interview state
-        st.session_state.candidate_match_results = []
-        st.session_state.interview_qa = []
-        st.session_state.evaluation_report = ""
-
-        st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
+        load_and_generate_cv_data()
         
     
     # ==============================================================
@@ -597,10 +611,10 @@ def cv_management_tab_content():
         st.session_state["mini_edu_degree_key"] = ""
         st.session_state["mini_edu_college_key"] = ""
         st.session_state["mini_edu_university_key"] = ""
-        st.session_state["mini_edu_from_year_key"] = str(date.today().year) 
-        st.session_state["mini_edu_to_year_key"] = "Present" 
+        # Reset the selectbox keys to their default values 
+        # Note: Select boxes reset their values on rerun to match the 'index' or 'value' given.
+        # We rely on the implicit rerun here which occurs when we change st.session_state.
         st.session_state["mini_edu_score_key"] = ""
-        st.session_state["mini_edu_type_key"] = "CGPA"
         
         st.toast(f"Education: {new_entry['degree']} added.")
         st.rerun() 
@@ -657,7 +671,7 @@ def cv_management_tab_content():
         
         
     # ==============================================================
-    # --- 4A. DYNAMIC EXPERIENCE MANAGEMENT MINI-FORM (MOVED HERE) ---
+    # --- 4A. DYNAMIC EXPERIENCE MANAGEMENT MINI-FORM ---
     # ==============================================================
     st.markdown("<h5 style='color: #4CAF50;'>Professional Experience Entry Form</h5>", unsafe_allow_html=True)
     
@@ -688,8 +702,6 @@ def cv_management_tab_content():
         # Clear form input fields
         st.session_state["mini_exp_company_key"] = ""
         st.session_state["mini_exp_role_key"] = ""
-        st.session_state["mini_exp_from_year_key"] = str(date.today().year)
-        st.session_state["mini_exp_to_year_key"] = "Present"
         st.session_state["mini_exp_ctc_key"] = ""
         st.session_state["mini_exp_responsibilities_key"] = ""
         
@@ -874,7 +886,7 @@ def cv_management_tab_content():
             )
             
     else:
-        st.info("Please fill out the main form and click 'Generate and Load ALL CV Data' or parse a resume in the 'Resume Parsing' tab to see the preview and download options.")
+        st.info("Please fill out the details and click **'Generate and Load ALL CV Data'** or parse a resume in the 'Resume Parsing' tab to see the preview and download options.")
 
 
 def filter_jd_tab_content():
@@ -1608,10 +1620,6 @@ def candidate_dashboard():
 if __name__ == '__main__':
     if 'page' not in st.session_state:
         st.session_state.page = "dashboard"
-    
-    # In this structure, synchronization between temporary keys and form widgets is 
-    # handled automatically by Streamlit when the mini-forms are submitted, 
-    # as the mini-forms successfully cause a rerun when submitted.
     
     if st.session_state.page == "dashboard":
         candidate_dashboard()
