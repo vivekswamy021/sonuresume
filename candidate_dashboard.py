@@ -1,432 +1,582 @@
 import streamlit as st
 import os
+import pdfplumber
+import docx
+import openpyxl
+import json
+import tempfile
 from groq import Groq
-from dotenv import load_dotenv
-from pypdf import Pdfplumber # This is the fixed module import
-import io
-import time
+import traceback
+import re 
+from dotenv import load_dotenv 
+from datetime import date 
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-# --- 1. CONFIGURATION AND INITIALIZATION ---
+# -------------------------
+# CONFIGURATION & API SETUP (Necessary for standalone functions)
+# -------------------------
+
+GROQ_MODEL = "llama-3.1-8b-instant"
+# Load environment variables (mocked if running standalone)
 load_dotenv()
-# Use os.environ for Groq API Key
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-st.set_page_config(
-    page_title="AI-Powered HR Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Initialize Groq Client or Mock Client (Must be present for function definitions)
+if not GROQ_API_KEY:
+    class MockGroqClient:
+        def chat(self):
+            class Completions:
+                def create(self, **kwargs):
+                    raise ValueError("GROQ_API_KEY not set. AI functions disabled.")
+            return Completions()
+    client = MockGroqClient()
+else:
+    client = Groq(api_key=GROQ_API_KEY)
 
-# Initialize Session State variables for data storage
-if 'resumes' not in st.session_state:
-    st.session_state.resumes = {}  # {filename: {'text': '...', 'summary': '...'}}
-if 'jds' not in st.session_state:
-    st.session_state.jds = {}      # {title: 'JD text'}
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'interview_history' not in st.session_state:
-    st.session_state.interview_history = []
+# --- Utility Functions (Duplicated/shared for both dashboards) ---
 
-# Groq Client Initialization
-@st.cache_resource
-def get_groq_client():
-    """Initializes and returns the Groq client."""
-    if not GROQ_API_KEY:
-        st.error("GROQ_API_KEY not found. Please set it in a .env file.")
-        return None
+def go_to(page_name):
+    """Changes the current page in Streamlit's session state."""
+    st.session_state.page = page_name
+
+def get_file_type(file_path):
+    """Identifies the file type based on its extension."""
+    ext = os.path.splitext(file_path)[1].lower().strip('.')
+    if ext == 'pdf': return 'pdf'
+    elif ext == 'docx': return 'docx'
+    elif ext == 'xlsx': return 'xlsx'
+    else: return 'txt' 
+
+def extract_content(file_type, file_path):
+    """Extracts text content from various file types (Simplified for resume parsing)."""
+    text = ''
     try:
-        return Groq(api_key=GROQ_API_KEY)
-    except Exception as e:
-        st.error(f"Error initializing Groq client: {e}")
-        return None
+        if file_type == 'pdf':
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
+        elif file_type == 'docx':
+            doc = docx.Document(file_path)
+            text = '\n'.join([para.text for para in doc.paragraphs])
+        # Only PDF/DOCX/TXT are critical for resumes; ignoring XLSX for this context
 
-client = get_groq_client()
-LLM_MODEL = "llama3-8b-8192" # Fast Groq model for quick responses
-
-# --- 2. HELPER FUNCTIONS ---
-
-def extract_text_from_pdf(file_bytes):
-    """Extracts text from a PDF file in memory."""
-    try:
-        pdf_file = io.BytesIO(file_bytes)
-        reader = PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
+        if not text.strip():
+            return f"Error: {file_type.upper()} content extraction failed or file is empty."
+        
         return text
+    
     except Exception as e:
-        st.error(f"Could not read PDF: {e}")
-        return None
+        return f"Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}"
 
-def groq_chat_completion(messages, system_prompt, stream=False):
-    """Handles Groq API call with system prompt."""
-    if not client:
-        return "LLM service is unavailable."
+
+@st.cache_data(show_spinner="Extracting JD metadata...")
+def extract_jd_metadata(jd_text):
+    """Extracts structured metadata (Role, Job Type, Key Skills) from raw JD text."""
+    if not GROQ_API_KEY:
+        return {"role": "N/A", "job_type": "N/A", "key_skills": []}
+
+    prompt = f"""Analyze the following Job Description and extract the key metadata.
     
-    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    Job Description:
+    {jd_text}
     
+    Provide the output strictly as a JSON object with the following three keys:
+    1.  **role**: The main job title (e.g., 'Data Scientist', 'Senior Software Engineer'). If not clear, default to 'General Analyst'.
+    3.  **key_skills**: A list of 5 to 10 most critical hard and soft skills required.
+    """
+    content = ""
     try:
-        return client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=full_messages,
-            stream=stream
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
         )
+        content = response.choices[0].message.content.strip()
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0).strip()
+            json_str = json_str.replace('```json', '').replace('```', '').strip()
+            parsed = json.loads(json_str)
+        else:
+            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
+        
+        return {
+            "role": parsed.get("role", "General Analyst"),
+            "key_skills": [s.strip() for s in parsed.get("key_skills", []) if isinstance(s, str)]
+        }
+
+    except Exception:
+        return {"role": "General Analyst (LLM Error)", "key_skills": ["LLM Error", "Fallback"]}
+
+
+@st.cache_data(show_spinner="Analyzing content with Groq LLM...")
+def parse_with_llm(text):
+    """Sends resume text to the LLM for structured information extraction."""
+    if text.startswith("Error") or not GROQ_API_KEY:
+        return {"error": "Parsing error or API key missing.", "raw_output": ""}
+
+    prompt = f"""Extract the following information from the resume in structured JSON.
+    - Name, - Email, - Phone, - Skills, - Education, 
+    - Experience, - Certifications, 
+    - Projects, - Strength, 
+    - Personal Details, - Github, - LinkedIn
+    
+    Also, provide a key called **'summary'** which is a single, brief paragraph (3-4 sentences max) summarizing the candidate's career highlights and most relevant skills.
+    
+    Resume Text: {text}
+    
+    Provide the output strictly as a JSON object.
+    """
+    content = ""
+    parsed = {}
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        content = response.choices[0].message.content.strip()
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0).strip()
+            json_str = json_str.replace('```json', '').replace('```', '').strip()
+            parsed = json.loads(json_str)
+        else:
+            raise json.JSONDecodeError("Could not isolate a valid JSON structure.", content, 0)
     except Exception as e:
-        st.error(f"Groq API Error: {e}")
-        return None
+        parsed = {"error": f"LLM error: {e}", "raw_output": content}
 
-# --- 3. TAB FUNCTIONS (DASHBOARD PAGES) ---
+    return parsed
 
-def resume_management_tab():
-    st.title("📄 Resume & CV Management")
-    st.markdown("Upload resumes and view the parsed data and AI summaries.")
+
+def evaluate_jd_fit(job_description, parsed_json):
+    """Evaluates how well a resume fits a given job description, including section-wise scores."""
+    if not GROQ_API_KEY or "error" in parsed_json: return "AI Evaluation Disabled or resume parsing failed."
     
-    # --- Resume Upload (Combined with CV Management) ---
-    with st.expander("⬆️ Upload Resume (PDF Only)", expanded=True):
-        uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    relevant_resume_data = {
+        'Skills': parsed_json.get('skills', 'Not found or empty'),
+        'Experience': parsed_json.get('experience', 'Not found or empty'),
+        'Education': parsed_json.get('education', 'Not found or empty'),
+    }
+    resume_summary = json.dumps(relevant_resume_data, indent=2)
 
-        if uploaded_file is not None:
-            file_name = uploaded_file.name
-            st.session_state.current_upload_file = file_name # Store filename temporarily
-            
-            if st.button("Process & Analyze Resume"):
-                with st.spinner(f"Extracting text from {file_name}..."):
-                    pdf_text = extract_text_from_pdf(uploaded_file.read())
-                
-                if pdf_text and file_name not in st.session_state.resumes:
-                    st.toast("Text extraction complete. Sending to AI for summary...", icon="🤖")
-                    
-                    # AI Analysis to summarize the CV
-                    summary_prompt = f"Analyze the following CV text and provide a structured summary. Include key sections: Name, Contact, Summary (1-2 sentences), Top 5 Skills, and Total Experience (years).\n\nCV Text: {pdf_text[:10000]}..." # Truncate for API
-                    
-                    messages = [{"role": "user", "content": summary_prompt}]
-                    
-                    response = groq_chat_completion(messages, "You are a professional HR resume parser. Be concise and use markdown formatting.")
-                    
-                    if response:
-                        summary = response.choices[0].message.content
-                        st.session_state.resumes[file_name] = {
-                            'text': pdf_text,
-                            'summary': summary,
-                            'timestamp': time.time()
-                        }
-                        st.success(f"Successfully processed and analyzed {file_name}!")
-                        st.balloons()
-                    else:
-                        st.error("Failed to get AI summary.")
-                elif file_name in st.session_state.resumes:
-                    st.warning(f"Resume '{file_name}' is already in the system.")
-                
-    # --- Stored Resumes Display ---
-    st.subheader("Stored Resumes")
-    if st.session_state.resumes:
-        for filename, data in st.session_state.resumes.items():
-            with st.container(border=True):
-                col1, col2 = st.columns([4, 1])
-                col1.markdown(f"**{filename}**")
-                col1.caption(f"Added: {time.strftime('%Y-%m-%d %H:%M', time.localtime(data['timestamp']))}")
-
-                if col2.button("View Details", key=f"view_{filename}"):
-                    st.info(f"Summary for {filename}")
-                    st.markdown(data['summary'])
-                    if st.checkbox("Show Full Extracted Text (Caution: Very long)", key=f"full_text_{filename}"):
-                        st.text_area("Full Text", data['text'], height=300)
-
-    else:
-        st.info("No resumes uploaded yet. Use the uploader above to get started.")
-
-def jd_management_tab():
-    st.title("💼 JD Management & Filtering")
-    st.markdown("Add Job Descriptions and use AI to help categorize and filter them.")
-
-    # --- JD Upload Form (Combined with JD Management) ---
-    with st.expander("➕ Add New Job Description", expanded=True):
-        jd_title = st.text_input("Job Title/Reference", key="jd_title_input")
-        jd_text = st.text_area("Paste Job Description Text", height=250, key="jd_text_input")
-        
-        if st.button("Save & Analyze JD"):
-            if jd_title and jd_text:
-                st.session_state.jds[jd_title] = jd_text
-                st.toast(f"JD '{jd_title}' saved!")
-                
-                # AI Analysis for categorization/filtering prep
-                analysis_prompt = f"Analyze the following Job Description (JD) and extract key information in a brief format: Role Level (e.g., Senior, Mid), Required Years of Experience (numeric), Key Technologies (top 3), and Soft Skills (top 2).\n\nJD Text: {jd_text[:10000]}..."
-                
-                messages = [{"role": "user", "content": analysis_prompt}]
-                
-                response = groq_chat_completion(messages, "You are an HR JD analyst. Provide a structured, concise bulleted list.")
-                
-                if response:
-                    st.session_state.jds[jd_title + '_analysis'] = response.choices[0].message.content
-                    st.success(f"JD analysis complete for {jd_title}!")
-                else:
-                    st.error("Failed to get AI analysis for JD.")
-            else:
-                st.error("Please provide both a title and the JD text.")
-
-    # --- Stored JDs Display ---
-    st.subheader("Stored Job Descriptions")
-    if st.session_state.jds:
-        # Filtering (Tab 5 functionality integrated here)
-        filter_col, sort_col = st.columns(2)
-        filter_term = filter_col.text_input("Filter JDs by Keyword in Title/Content")
-
-        filtered_jds = {k: v for k, v in st.session_state.jds.items() if filter_term.lower() in k.lower() or (isinstance(v, str) and filter_term.lower() in v.lower())}
-        
-        for title, text in filtered_jds.items():
-            if not title.endswith('_analysis'):
-                with st.container(border=True):
-                    st.markdown(f"**{title}**")
-                    if title + '_analysis' in st.session_state.jds:
-                        st.caption("AI Analysis:")
-                        st.markdown(st.session_state.jds[title + '_analysis'])
-                    
-                    if st.checkbox("Show Full JD", key=f"show_jd_{title}"):
-                        st.text_area("", text, height=200, disabled=True)
-    else:
-        st.info("No Job Descriptions saved yet.")
-
-def batch_jd_match_tab():
-    st.title("🤖 Batch JD Match")
-    st.markdown("Select a Job Description and a batch of Resumes to find the best match.")
+    prompt = f"""Evaluate how well the following resume content matches the provided job description.
+    Job Description: {job_description}
+    Resume Sections for Analysis: {resume_summary}
+    Provide a detailed evaluation structured as follows:
+    1.  **Overall Fit Score:** A score out of 10.
+    2.  **Section Match Percentages:** A percentage score for the match in the key sections (Skills, Experience, Education).
     
-    # Check for data availability
-    if not st.session_state.jds or not st.session_state.resumes:
-        st.warning("Please upload at least one JD and one Resume in the other tabs first.")
-        return
-
-    # User Input Selection
-    col1, col2 = st.columns(2)
-    selected_jd_title = col1.selectbox("Select Target Job Description", 
-                                        [k for k in st.session_state.jds.keys() if not k.endswith('_analysis')])
-    selected_resumes = col2.multiselect("Select Resumes for Matching", 
-                                        list(st.session_state.resumes.keys()))
-
-    if st.button("Run Batch Match & Scoring"):
-        if not selected_jd_title or not selected_resumes:
-            st.error("Please select a JD and at least one Resume.")
-            return
-
-        jd_text = st.session_state.jds[selected_jd_title]
-        
-        st.subheader(f"Results for JD: {selected_jd_title}")
-        results = []
-        
-        # Match using Groq LLM
-        for resume_name in selected_resumes:
-            resume_text = st.session_state.resumes[resume_name]['text']
-            
-            match_prompt = f"""
-            Compare the following Resume against the Job Description (JD).
-            1. Provide a Match Percentage (as a number between 0 and 100).
-            2. List 3 key skills that match.
-            3. List 2 missing skills/gaps.
-            4. Provide a concise, two-sentence rationale for the score.
-
-            Job Description: {jd_text[:8000]}
-            ---
-            Resume Text: {resume_text[:8000]}
-            """
-            
-            with st.spinner(f"Matching {resume_name}..."):
-                messages = [{"role": "user", "content": match_prompt}]
-                response = groq_chat_completion(messages, "You are a specialized JD-Resume matching AI. Your output MUST start with the Match Percentage number followed by the rest of the analysis.")
-            
-            if response:
-                match_result = response.choices[0].message.content
-                # Attempt to extract score for the metric display
-                try:
-                    score_str = match_result.split('\n')[0].strip().split('.')[0].strip()
-                    score = int(score_str.split(' ')[0].split('%')[0].strip())
-                except:
-                    score = 0 # Default if extraction fails
-                
-                results.append({
-                    'name': resume_name,
-                    'score': score,
-                    'analysis': match_result
-                })
-            else:
-                results.append({'name': resume_name, 'score': 0, 'analysis': "AI analysis failed."})
-
-        # Display results in a structured table/list
-        results.sort(key=lambda x: x['score'], reverse=True)
-        for i, res in enumerate(results):
-            col_rank, col_name, col_score = st.columns([1, 4, 2])
-            col_rank.metric("Rank", i + 1)
-            col_name.markdown(f"**{res['name']}**")
-            col_score.metric("Match Score", f"{res['score']}%", delta_color="normal")
-            
-            with st.expander("View AI Rationale"):
-                st.markdown(res['analysis'])
-            st.divider()
-
-
-def chatbot_tab():
-    st.title("💬 Resume / JD Chatbot")
-    st.markdown("Ask questions about stored Resumes or JDs. Use this to quickly parse information or compare documents.")
-
-    # Sidebar for context setting
-    with st.sidebar:
-        st.subheader("Chat Context")
-        resume_options = list(st.session_state.resumes.keys())
-        jd_options = [k for k in st.session_state.jds.keys() if not k.endswith('_analysis')]
-        
-        selected_resume = st.selectbox("Context Resume (Optional)", ["None"] + resume_options)
-        selected_jd = st.selectbox("Context JD (Optional)", ["None"] + jd_options)
-        
-        if st.button("Clear Chat History", type="secondary"):
-            st.session_state.chat_history = []
-            st.rerun()
-
-    # Construct the full context
-    context_text = ""
-    if selected_resume != "None":
-        context_text += f"\n\n--- RESUME CONTEXT ({selected_resume}) ---\n{st.session_state.resumes[selected_resume]['text'][:5000]}"
-    if selected_jd != "None":
-        context_text += f"\n\n--- JD CONTEXT ({selected_jd}) ---\n{st.session_state.jds[selected_jd][:5000]}"
+    Format the output strictly as follows:
+    Overall Fit Score: [Score]/10
     
-    # System Prompt for Chatbot
-    system_prompt = f"""
-    You are an expert HR Analyst Chatbot. Your role is to answer user questions based on the provided context (Resume and/or JD) and your general HR knowledge. 
-    If you do not have context, state that you are answering based on general knowledge.
+    --- Section Match Analysis ---
+    Skills Match: [XX]%
+    Experience Match: [YY]%
+    Education Match: [ZZ]%
     
-    Current Context:
-    {context_text}
+    Strengths/Matches:
+    - Point 1
+    - Point 2
+    
+    Areas for Improvement:
+    - Point 1
+    - Point 2
     """
 
-    # Display chat messages from history
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Chat input
-    if prompt := st.chat_input("Ask a question about the context or general HR topics..."):
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            # Stream the response from Groq
-            messages_for_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state.chat_history]
-            
-            stream_response = groq_chat_completion(messages_for_api, system_prompt, stream=True)
-            
-            if stream_response:
-                full_response = st.write_stream(stream_response)
-                st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+    response = client.chat.completions.create(
+        model=GROQ_MODEL, 
+        messages=[{"role": "user", "content": prompt}], 
+        temperature=0.3
+    )
+    return response.choices[0].message.content.strip()
 
 
-def interview_preparation_tab():
-    st.title("🎤 Interview Preparation (AI Mock Interviewer)")
-    st.markdown("Start a mock interview where the AI acts as the interviewer. The AI will provide feedback at the end.")
+def parse_and_analyze_resume(file_input, jd_content, source_type='file', jd_name="Job Description"):
+    """
+    Handles file/text input, parsing, and analysis for the candidate dashboard.
+    Returns a dictionary with results.
+    """
+    text = None
+    file_name = f"Resume ({date.today().strftime('%Y-%m-%d')})"
     
-    if 'is_interview_active' not in st.session_state:
-        st.session_state.is_interview_active = False
+    if source_type == 'file':
+        if not isinstance(file_input, UploadedFile):
+            return {"error": "Invalid file input type passed to parser."}
+        
+        temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(temp_dir, file_input.name) 
+        with open(temp_path, "wb") as f:
+            f.write(file_input.getbuffer()) 
 
-    # Sidebar for interview setup
-    with st.sidebar:
-        st.subheader("Interview Setup")
+        file_type = get_file_type(temp_path)
+        text = extract_content(file_type, temp_path)
+        file_name = file_input.name.split('.')[0]
+    
+    elif source_type == 'text':
+        text = file_input
         
-        jd_options = [k for k in st.session_state.jds.keys() if not k.endswith('_analysis')]
-        interview_jd = st.selectbox("Select Target JD (Optional for context)", ["General"] + jd_options)
+    if text.startswith("Error"):
+        return {"error": text}
+
+    # 1. Parse Resume
+    parsed_resume = parse_with_llm(text)
+    
+    if "error" in parsed_resume:
+        return {"error": f"Resume Parsing Failed: {parsed_resume.get('error', 'Unknown Error')}"}
+    
+    # 2. Extract JD Metadata
+    jd_metadata = extract_jd_metadata(jd_content)
+    
+    # 3. Run Match Evaluation
+    match_analysis = evaluate_jd_fit(jd_content, parsed_resume)
+    
+    overall_score_match = re.search(r'Overall Fit Score:\s*[^\d]*(\d+)\s*/10', match_analysis, re.IGNORECASE)
+    overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
+    
+    return {
+        "name": parsed_resume.get('name', file_name),
+        "date": date.today().strftime("%Y-%m-%d"),
+        "jd_name": jd_name,
+        "jd_role": jd_metadata.get('role', 'N/A'),
+        "overall_score": overall_score,
+        "match_report": match_analysis,
+        "parsed_resume": parsed_resume
+    }
+
+# -------------------------
+# CANDIDATE DASHBOARD FUNCTION
+# -------------------------
+
+def candidate_dashboard():
+    st.title("🧑‍💻 Candidate Dashboard")
+    st.caption("Analyze your resume's fit for any job instantly.")
+    
+    col_header, col_logout = st.columns([4, 1])
+    with col_logout:
+        # Note: If a user system was implemented, this would reset user-specific state too.
+        if st.button("🚪 Log Out", use_container_width=True):
+            # Clear candidate specific analysis data
+            if 'candidate_results' in st.session_state:
+                del st.session_state.candidate_results
+            if 'current_resume' in st.session_state:
+                del st.session_state.current_resume
+            go_to("login")
+            st.rerun() 
+            
+    st.markdown("---")
+
+    # --- Session State Initialization for Candidate ---
+    if "candidate_results" not in st.session_state:
+        # This stores a history of all analyses performed by the candidate
+        st.session_state.candidate_results = []
+    if "current_resume" not in st.session_state:
+        # This stores the currently parsed resume details
+        st.session_state.current_resume = None
+
+    # --- Main Tabs ---
+    tab_analysis, tab_history = st.tabs(["🚀 New Analysis", "📝 Application History"])
+
+    with tab_analysis:
+        st.header("Resume Match Analyzer")
+        st.markdown("### Step 1: Upload or Paste Your Resume")
         
-        # System prompt for the initial setup
-        if interview_jd == "General":
-            interview_system_prompt = "You are a professional HR interviewer. Your first question must be: 'Tell me about yourself and why you are interested in this position.'"
+        # --- Resume Input ---
+        resume_method = st.radio(
+            "Select Resume Input Method", 
+            ["Upload File (PDF/DOCX)", "Paste Text"],
+            key="candidate_resume_method"
+        )
+        
+        uploaded_file = None
+        pasted_resume_text = ""
+        
+        if resume_method == "Upload File (PDF/DOCX)":
+            uploaded_file = st.file_uploader(
+                "Upload your Resume",
+                type=["pdf", "docx", "txt"],
+                key="candidate_resume_upload"
+            )
         else:
-            jd_text = st.session_state.jds[interview_jd][:5000]
-            interview_system_prompt = f"You are a professional HR interviewer conducting a mock interview for the role defined in the following JD. Start the interview by asking the candidate to introduce themselves and discuss their interest in the role based on the JD. Be critical and specific to the JD. JD: {jd_text}"
+            pasted_resume_text = st.text_area(
+                "Paste your Resume Text here (Ensure formatting is clean)",
+                height=300,
+                key="candidate_resume_text_area"
+            )
 
-        if st.button("Start New Interview", type="primary"):
-            st.session_state.interview_history = []
-            st.session_state.is_interview_active = True
+        st.markdown("---")
+        
+        st.markdown("### Step 2: Provide the Job Description (JD)")
+        
+        # --- JD Input ---
+        jd_method = st.radio(
+            "Select JD Input Method", 
+            ["Paste JD Text", "LinkedIn URL (Simulated)"],
+            key="candidate_jd_method"
+        )
+        
+        jd_content = ""
+        jd_name = "Custom JD"
+        
+        if jd_method == "Paste JD Text":
+            jd_content = st.text_area(
+                "Paste the full Job Description Text",
+                height=300,
+                key="candidate_jd_text_area"
+            )
             
-            # Get the first question from the AI
-            initial_message = [{"role": "user", "content": "Begin the interview."}]
-            response = groq_chat_completion(initial_message, interview_system_prompt)
+            # Allow user to set a title for easier tracking
+            if jd_content:
+                 first_line = jd_content.splitlines()[0].strip()
+                 jd_name = st.text_input("Job Title for Tracking", value=first_line if len(first_line) < 50 else "Pasted JD", key="jd_title_input")
             
-            if response:
-                first_question = response.choices[0].message.content
-                st.session_state.interview_history.append({"role": "assistant", "content": first_question})
+        elif jd_method == "LinkedIn URL (Simulated)":
+            st.warning("⚠️ **Note:** Due to platform restrictions, this is a **simulation**. The system extracts a sample JD based on the URL and cannot fetch the real content.")
+            
+            linkedin_url = st.text_input(
+                "Enter LinkedIn Job URL", 
+                placeholder="e.g., https://www.linkedin.com/jobs/view/...", 
+                key="linkedin_url_input"
+            )
+            
+            if linkedin_url:
+                # Use a simplified mock extractor for the URL (shared utility)
+                from admin_dashboard_module import extract_jd_from_linkedin_url # Assuming the shared utility is here
+                jd_content = extract_jd_from_linkedin_url(linkedin_url)
+                
+                # Try to derive a name from the URL for tracking
+                try:
+                    name_match = re.search(r'/jobs/view/([^/]+)', linkedin_url)
+                    jd_name = name_match.group(1).split('?')[0].replace('-', ' ').title() if name_match else "LinkedIn Job"
+                except:
+                    jd_name = "LinkedIn Job"
+                    
+                st.info(f"Using simulated JD for: **{jd_name}**")
+                
+        st.markdown("---")
+        
+        # --- Run Analysis Button ---
+        if st.button("✨ Run Resume Match Analysis", key="run_analysis_btn", type="primary", use_container_width=True):
+            
+            # --- Validation ---
+            resume_input_valid = False
+            if resume_method == "Upload File (PDF/DOCX)" and uploaded_file is not None:
+                resume_input_valid = True
+                resume_source = uploaded_file
+                source_type = 'file'
+            elif resume_method == "Paste Text" and pasted_resume_text.strip():
+                resume_input_valid = True
+                resume_source = pasted_resume_text.strip()
+                source_type = 'text'
+            
+            if not resume_input_valid:
+                st.error("❌ Please provide your resume using the selected method.")
+            elif not jd_content.strip():
+                st.error("❌ Please provide the Job Description content.")
+            elif not GROQ_API_KEY:
+                st.error("❌ AI Analysis is disabled. Please ensure the `GROQ_API_KEY` is set.")
+            else:
+                # --- Execution ---
+                with st.spinner(f"Running analysis against '{jd_name}'... This may take a moment."):
+                    try:
+                        analysis_result = parse_and_analyze_resume(
+                            resume_source, 
+                            jd_content.strip(), 
+                            source_type=source_type, 
+                            jd_name=jd_name
+                        )
+                        
+                        if "error" in analysis_result:
+                            st.error(f"Analysis Failed: {analysis_result['error']}")
+                        else:
+                            # Success: Store result and display
+                            st.session_state.candidate_results.insert(0, analysis_result)
+                            st.session_state.current_resume = analysis_result
+                            st.success(f"✅ Analysis complete! Score: **{analysis_result['overall_score']}/10**")
+                            st.balloons()
+                            st.rerun() # Rerun to move to the display section cleanly
+                            
+                    except Exception as e:
+                        st.error(f"An unexpected error occurred during analysis: {e}")
+                        st.code(traceback.format_exc())
+
+        st.markdown("---")
+        
+        # --- Display Current Analysis Result ---
+        
+        if st.session_state.current_resume:
+            
+            result = st.session_state.current_resume
+            st.header(f"Results for **{result['name']}**")
+            
+            col_score, col_jd_info, col_date = st.columns(3)
+            
+            with col_score:
+                score = result['overall_score']
+                st.metric(
+                    label="Overall Match Score", 
+                    value=f"{score}/10", 
+                    delta="Excellent" if int(score) >= 8 else ("Good" if int(score) >= 6 else "Needs Work"), 
+                    delta_color="normal"
+                )
+            with col_jd_info:
+                st.markdown(f"**Target Role:** `{result.get('jd_role', 'N/A')}`")
+                st.markdown(f"**Job Title:** `{result.get('jd_name', 'Custom JD')}`")
+            with col_date:
+                st.markdown(f"**Analysis Date:** `{result['date']}`")
+                st.markdown(f"**Candidate Name:** `{result['name']}`")
+                
+            st.markdown("---")
+            
+            st.subheader("Detailed Match Report")
+            st.text(result['match_report'])
+            
+            st.markdown("---")
+            
+            st.subheader("Parsed Resume Data (For Review)")
+            
+            parsed_data = result['parsed_resume']
+            
+            # Display Key parsed fields
+            st.markdown(f"**Summary:** *{parsed_data.get('summary', 'N/A')}*")
+            st.markdown(f"**Email:** `{parsed_data.get('email', 'N/A')}` | **Phone:** `{parsed_data.get('phone', 'N/A')}`")
+            
+            # Display detailed sections in expanders
+            if parsed_data.get('experience'):
+                with st.expander("Experience Details"):
+                    st.json(parsed_data['experience'])
+            
+            if parsed_data.get('skills'):
+                with st.expander("Skills List"):
+                    st.json(parsed_data['skills'])
+                    
+            if parsed_data.get('education'):
+                with st.expander("Education Details"):
+                    st.json(parsed_data['education'])
+                    
+            if parsed_data.get('projects') or parsed_data.get('certifications'):
+                with st.expander("Projects & Certifications"):
+                    st.markdown("**Projects:**")
+                    st.json(parsed_data.get('projects', 'N/A'))
+                    st.markdown("**Certifications:**")
+                    st.json(parsed_data.get('certifications', 'N/A'))
+
+        else:
+            st.info("Run an analysis above to view your first match report here.")
+
+
+    with tab_history:
+        st.header("Application History")
+        
+        if not st.session_state.candidate_results:
+            st.info("No analysis results found. Run a new analysis on the 'New Analysis' tab to build your history.")
+            return
+
+        # Prepare data for display
+        history_data = []
+        for res in st.session_state.candidate_results:
+            # Safely handle potential score non-integer values
+            try:
+                numeric_score = int(res['overall_score'])
+            except:
+                numeric_score = 0
+            
+            history_data.append({
+                "Date": res['date'],
+                "Job Title": res['jd_name'],
+                "Role Found": res['jd_role'],
+                "Match Score (out of 10)": res['overall_score'],
+                "Sort_Score": numeric_score, # For sorting
+            })
+            
+        # Sort by date (most recent first) and score
+        history_data.sort(key=lambda x: (x['Date'], x['Sort_Score']), reverse=True)
+        
+        st.markdown("### Your Past Resume Analysis Matches")
+        
+        # Display as a dataframe
+        st.dataframe(
+            history_data,
+            column_order=["Date", "Job Title", "Role Found", "Match Score (out of 10)"],
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        st.markdown("---")
+        st.markdown("### View Detailed Reports")
+        
+        # Display detailed reports in expanders
+        for i, res in enumerate(st.session_state.candidate_results):
+            header_text = f"{res['date']} | **{res['jd_name']}** (Score: **{res['overall_score']}/10**)"
+            with st.expander(header_text):
+                st.markdown("#### Full Match Report")
+                st.text(res['match_report'])
+                
+                # Optional: Show parsed resume summary
+                if res.get('parsed_resume', {}).get('summary'):
+                    st.markdown("---")
+                    st.markdown(f"**Resume Summary:** *{res['parsed_resume']['summary']}*")
+
+
+# -------------------------
+# MOCK LOGIN AND MAIN APP LOGIC (For full execution)
+# -------------------------
+
+# Mock implementation of the Admin Dashboard (Required because the utility functions reference it)
+def admin_dashboard():
+    st.title("Admin Dashboard (Mock)")
+    st.info("This is a placeholder for the Admin Dashboard. Use the Log Out button to switch.")
+    if st.button("🚪 Log Out (Switch to Candidate)"):
+        go_to("candidate_dashboard")
+        st.session_state.user_type = "candidate"
+        st.rerun()
+
+def login_page():
+    st.title("Welcome to PragyanAI")
+    st.header("Login")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username (Enter 'candidate' or 'admin')")
+        password = st.text_input("Password (Any value)", type="password")
+        submitted = st.form_submit_button("Login")
+        
+        if submitted:
+            if username.lower() == "candidate":
+                st.session_state.logged_in = True
+                st.session_state.user_type = "candidate"
+                go_to("candidate_dashboard")
+                st.success("Logged in as Candidate!")
+                st.rerun()
+            elif username.lower() == "admin":
+                st.session_state.logged_in = True
+                st.session_state.user_type = "admin"
+                go_to("admin_dashboard")
+                st.success("Logged in as Admin!")
                 st.rerun()
             else:
-                st.error("Failed to start interview.")
-        
-        if st.session_state.is_interview_active and st.button("End Interview & Get Feedback", type="secondary"):
-            st.session_state.is_interview_active = False
-            
-            # Generate final feedback
-            feedback_prompt = "The interview has ended. Review the entire conversation history and provide comprehensive feedback on the candidate's performance. Focus on: Strengths, Weaknesses/Areas for Improvement, and a final Hire/No-Hire recommendation with rationale."
-            
-            messages_for_feedback = [{"role": m["role"], "content": m["content"]} for m in st.session_state.interview_history]
-            messages_for_feedback.append({"role": "user", "content": feedback_prompt})
-            
-            with st.spinner("Generating detailed feedback..."):
-                response = groq_chat_completion(messages_for_feedback, "You are an HR Interview Coach. Provide feedback in a structured markdown format with clear headings.")
-            
-            if response:
-                st.session_state.interview_history.append({"role": "assistant", "content": f"### Interview Feedback\n---\n{response.choices[0].message.content}"})
-                st.rerun()
+                st.error("Invalid username. Please use 'candidate' or 'admin'.")
 
-    # Display interview messages
-    if st.session_state.is_interview_active or st.session_state.interview_history:
-        for message in st.session_state.interview_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+# --- Main App Execution ---
+
+if __name__ == '__main__':
+    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
+
+    # Initialize state for navigation and authentication
+    if 'page' not in st.session_state: st.session_state.page = "login"
+    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+    if 'user_type' not in st.session_state: st.session_state.user_type = None
+    
+    # Initialize state for candidate-specific data
+    if "candidate_results" not in st.session_state: st.session_state.candidate_results = []
+    if "current_resume" not in st.session_state: st.session_state.current_resume = None
+
+    if st.session_state.logged_in:
+        if st.session_state.user_type == "candidate":
+            candidate_dashboard()
+        elif st.session_state.user_type == "admin":
+            # Running the original (or a mock) admin dashboard logic
+            admin_dashboard() 
     else:
-        st.info("Set up your interview context and click 'Start New Interview' to begin!")
-        
-    # Interview continues
-    if st.session_state.is_interview_active:
-        if user_answer := st.chat_input("Your response..."):
-            st.session_state.interview_history.append({"role": "user", "content": user_answer})
-            with st.chat_message("user"):
-                st.markdown(user_answer)
-                
-            with st.chat_message("assistant"):
-                # Use the conversation history to generate the next question
-                messages_for_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state.interview_history]
-                
-                stream_response = groq_chat_completion(messages_for_api, interview_system_prompt + " Ask only the next question and wait for the user's response.", stream=True)
-                
-                if stream_response:
-                    full_response = st.write_stream(stream_response)
-                    st.session_state.interview_history.append({"role": "assistant", "content": full_response})
-
-    
-# --- 4. MAIN APP STRUCTURE ---
-
-def main():
-    st.title("AI HR Recruitment Dashboard")
-    st.caption("Powered by Streamlit and Groq LLMs")
-
-    # Define the tabs
-    tab_titles = [
-        "📄 Resume/CV Management", 
-        "💼 JD Management & Filtering", 
-        "🤖 Batch JD Match", 
-        "💬 Resume / JD Chatbot", 
-        "🎤 Interview Preparation"
-    ]
-    
-    # Create the tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
-    
-    with tab1:
-        resume_management_tab()
-    
-    with tab2:
-        jd_management_tab()
-
-    with tab3:
-        batch_jd_match_tab()
-        
-    with tab4:
-        chatbot_tab()
-        
-    with tab5:
-        interview_preparation_tab()
-
-if __name__ == "__main__":
-    main()
+        login_page()
