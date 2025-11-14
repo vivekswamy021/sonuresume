@@ -525,9 +525,9 @@ def cv_management_tab_content():
     # Immediate synchronization of list-based inputs
     st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
     
-    # --- 3. DYNAMIC EDUCATION MANAGEMENT (INTEGRATED MINI-FORM) ---
+    # --- 3.EDUCATION MANAGEMENT ---
     st.markdown("---")
-    st.subheader("3. Dynamic Education Management")
+    st.subheader("3. Education Management")
     
     # Function to handle adding the education entry
     def add_education_entry():
@@ -619,7 +619,7 @@ def cv_management_tab_content():
         
     # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (INTEGRATED MINI-FORM) ---
     st.markdown("---")
-    st.subheader("4. Dynamic Professional Experience Management")
+    st.subheader("4. Professional Experience Management")
     
     st.markdown("<h5 style='color: #4CAF50;'>Professional Experience Entry Form</h5>", unsafe_allow_html=True)
     
@@ -702,7 +702,7 @@ def cv_management_tab_content():
     
     # --- 5. DYNAMIC CERTIFICATIONS MANAGEMENT (INTEGRATED MINI-FORM) ---
     st.markdown("---")
-    st.subheader("5. Dynamic Certifications Management")
+    st.subheader("5. Certifications Management")
     
     st.markdown("<h5 style='color: #4CAF50;'>Certification Entry Form</h5>", unsafe_allow_html=True)
 
