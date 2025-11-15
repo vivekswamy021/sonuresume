@@ -134,6 +134,24 @@ def parse_cv_with_llm(text):
             parsed = json.loads(json_str)
         else:
             raise json.JSONDecodeError("Could not isolate a valid JSON structure.", content, 0)
+
+        # --- FIX: Robustly ensure 'skills' is a clean list of strings ---
+        if 'skills' in parsed and isinstance(parsed['skills'], list):
+            # First, cast everything to a string
+            parsed['skills'] = [str(s) for s in parsed['skills'] if s and isinstance(s, (str, list, dict))]
+            # Flatten skills that might be nested lists/dicts from LLM output
+            flat_skills = []
+            for s in parsed['skills']:
+                if isinstance(s, str):
+                    flat_skills.extend([skill.strip() for skill in s.split(',')])
+                elif isinstance(s, (list, dict)):
+                    # Handle complex LLM output like [{'name': 'Python'}, {'name': 'SQL'}]
+                    flat_skills.extend([str(item) for item in s])
+
+            # Final clean list of non-empty strings
+            parsed['skills'] = [s.strip() for s in flat_skills if s.strip()]
+        # --- END FIX ---
+
     except Exception as e:
         parsed = {"error": f"LLM parsing error: {e}", "raw_output": content}
 
@@ -186,28 +204,50 @@ def mock_jd_match(cv_data, jd_data):
     to derive Skills, Experience, and Education match percentages.
     """
     
-    # 1. Prepare Data
-    jd_skills = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
-    cv_skills = {s.lower() for s in cv_data.get('skills', []) if isinstance(s, str)}
+    # 1. Prepare Data (with enhanced cleaning)
     
+    # Robustly process required JD skills
+    jd_skills_raw = jd_data.get('required_skills', [])
+    if not isinstance(jd_skills_raw, list): jd_skills_raw = []
+    # Flatten and clean the JD skills list
+    jd_skills = set()
+    for s in jd_skills_raw:
+        if isinstance(s, str):
+            jd_skills.update(skill.lower().strip() for skill in s.split(',') if skill.strip())
+        elif isinstance(s, list):
+            jd_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
+            
+    # Robustly process CV skills (already cleaned in parse_cv_with_llm, but reinforce here)
+    cv_skills_raw = cv_data.get('skills', [])
+    if not isinstance(cv_skills_raw, list): cv_skills_raw = []
+    # Flatten and clean the CV skills list
+    cv_skills = set()
+    for s in cv_skills_raw:
+        if isinstance(s, str):
+            cv_skills.update(skill.lower().strip() for skill in s.split(',') if skill.strip())
+        elif isinstance(s, list):
+             cv_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
+
+    # Education/Qualification Preparation
     jd_qualifications = {q.lower() for q in jd_data.get('qualifications', []) if isinstance(q, str)}
     cv_education = {e.get('degree', '').lower() for e in cv_data.get('education', []) if isinstance(e, dict)}
     cv_certifications = {c.get('name', '').lower() for c in cv_data.get('certifications', []) if isinstance(c, dict)}
     
+    # Experience Preparation
     cv_experience_roles = {e.get('role', '').lower() for e in cv_data.get('experience', []) if isinstance(e, dict)}
     jd_title_lower = jd_data.get('title', '').lower()
     
     # --- 2. Skills Match Calculation ---
     
-    if not jd_skills:
-        skills_percent = 75 
+    jd_skills_count = len(jd_skills)
+    
+    if jd_skills_count == 0:
+        skills_percent = 75 # Default high score if no required skills are listed
+        common_skills = set()
     else:
         common_skills = jd_skills.intersection(cv_skills)
-        if len(jd_skills) > 0:
-            overlap_ratio = len(common_skills) / len(jd_skills)
-            skills_percent = int(overlap_ratio * 100)
-        else:
-            skills_percent = 0 
+        overlap_ratio = len(common_skills) / jd_skills_count
+        skills_percent = int(overlap_ratio * 100)
     
     skills_percent = max(0, min(100, skills_percent))
 
@@ -221,6 +261,7 @@ def mock_jd_match(cv_data, jd_data):
         match_count = 0
         
         for jd_qual in jd_qualifications:
+            # Check for substring match in education or certification
             if any(jd_qual in edu for edu in cv_education):
                  match_count += 1
             elif any(jd_qual in cert for cert in cv_certifications):
@@ -237,7 +278,13 @@ def mock_jd_match(cv_data, jd_data):
     # --- 4. Experience Match Calculation ---
     
     experience_level_jd = jd_data.get('experience_level', 'mid-level').lower()
-    cv_has_relevant_role = any(jd_title_lower in role or role in jd_title_lower for role in cv_experience_roles)
+    
+    # Check if any CV role title contains JD title (or vice versa, for broader match)
+    cv_has_relevant_role = any(
+        (jd_title_lower in role or role in jd_title_lower)
+        and (len(role) > 5 or len(jd_title_lower) > 5) # Avoid matching short, generic words
+        for role in cv_experience_roles
+    )
     
     cv_years_mock = len(cv_data.get('experience', []))
     
@@ -269,7 +316,7 @@ def mock_jd_match(cv_data, jd_data):
     final_score_10 = round(final_score_100 / 10, 1)
 
     # --- 6. Summary Generation ---
-    summary = f"Match based on **{len(common_skills)}/{len(jd_skills) if len(jd_skills) > 0 else 0}** required skills found. "
+    summary = f"Match based on **{len(common_skills)}/{jd_skills_count}** required skills found. "
     
     if final_score_100 > 90:
         summary += "Excellent match! Candidate is highly qualified and experienced."
@@ -798,6 +845,7 @@ def resume_parsing_tab():
             st.session_state.form_summary_value = parsed_data.get('summary', '')
             
             if isinstance(parsed_data.get('skills'), list):
+                # Use the cleaned list of skills from the parser
                 st.session_state.form_skills_value = "\n".join([str(s) for s in parsed_data['skills']])
             else:
                  st.session_state.form_skills_value = ""
@@ -872,11 +920,14 @@ def cv_form_content():
             default_date_from = date(2020, 1, 1)
             try:
                 if st.session_state.form_experience and isinstance(st.session_state.form_experience[-1], dict):
-                    latest_exp_date = st.session_state.form_experience[-1]['dates'].split(' - ')[0]
-                    if len(latest_exp_date) == 4 and latest_exp_date.isdigit():
-                        default_date_from = datetime.strptime(latest_exp_date, "%Y").date()
-                    elif '-' in latest_exp_date: 
-                        default_date_from = datetime.strptime(latest_exp_date.split('-')[0].strip(), "%Y").date()
+                    latest_exp_date_str = st.session_state.form_experience[-1]['dates'].split(' - ')[0]
+                    if len(latest_exp_date_str) == 4 and latest_exp_date_str.isdigit():
+                        default_date_from = datetime.strptime(latest_exp_date_str, "%Y").date()
+                    elif '-' in latest_exp_date_str: 
+                        # Attempt to parse a date part like 'YYYY' or a full date
+                        parts = latest_exp_date_str.split('-')
+                        if len(parts[0].strip()) == 4 and parts[0].strip().isdigit():
+                            default_date_from = datetime.strptime(parts[0].strip(), "%Y").date()
             except Exception:
                  pass
             
@@ -1445,7 +1496,7 @@ def batch_jd_match_tab():
             for r in results
         ]).set_index("Job Title")
         
-        # 🐛 FIX: Removed .style.background_gradient which caused the ImportError
+        # Use standard Streamlit Dataframe display (FIXED from Matplotlib Error)
         st.dataframe(
             df, 
             use_container_width=True,
@@ -1474,8 +1525,20 @@ def batch_jd_match_tab():
                 
                 st.markdown("###### Skill Overlap Details")
                 
-                required_skills = set(jd_data.get('required_skills', []))
+                # Fetch clean skills list/set from the matching function output
                 common_skills = set(result.get('common_skills', []))
+                
+                # Fetch clean required skills set from the JD data used in matching
+                jd_skills_raw = jd_data.get('required_skills', [])
+                if not isinstance(jd_skills_raw, list): jd_skills_raw = []
+                required_skills = set()
+                for s in jd_skills_raw:
+                    if isinstance(s, str):
+                        required_skills.update(skill.lower().strip() for skill in s.split(',') if skill.strip())
+                    elif isinstance(s, list):
+                        required_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
+
+
                 missing_skills = required_skills - common_skills
 
                 st.markdown(f"**Total Required Skills:** {len(required_skills)}")
