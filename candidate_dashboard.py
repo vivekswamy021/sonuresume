@@ -63,7 +63,7 @@ def format_cv_to_html(cv_data, cv_name):
             <p><strong>Dates:</strong> {edu.get('dates', 'N/A')}</p>
         </div>
         """
-
+    
     def format_certifications(cert):
         return f"""
         <div class="entry">
@@ -599,10 +599,13 @@ def generate_and_display_cv(cv_name):
         
     cv_data = st.session_state.managed_cvs[cv_name]
     
-    # Check if cv_data is actually a dictionary before proceeding
+    # FIX START: Robustly check for corrupted data/error string
     if not isinstance(cv_data, dict):
-        st.error(f"Error: Stored data for CV '{cv_name}' is corrupted (not a dictionary). Please re-parse or re-save the CV.")
+        st.error(f"❌ **Error:** Stored data for CV **'{cv_name}'** is corrupted or failed to parse. Cannot display structured CV.")
+        st.markdown("#### Raw Stored Data:")
+        st.code(str(cv_data), language="text")
         return
+    # FIX END
         
     st.markdown(f"### 📄 CV View: **{cv_data.get('name', cv_name)}**")
     
@@ -694,26 +697,45 @@ def resume_parsing_tab():
         # Check for extraction errors
         if extracted_text.startswith("Error") or not extracted_text:
             st.error(f"Text Extraction Failed: {extracted_text}")
+            # Ensure an error key is created even for extraction failures
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+            error_key = f"ERROR_{file_name}_{timestamp}"
+            st.session_state.managed_cvs[error_key] = f"Extraction Error: {extracted_text}"
+            st.session_state.current_resume_name = error_key
+            st.session_state.show_cv_output = error_key
+            st.rerun() 
             return
             
         # Proceed with LLM parsing
         with st.spinner("🧠 Sending to Groq LLM for structured parsing..."):
             parsed_data = parse_cv_with_llm(extracted_text)
         
+        # Determine a unique key name for the new CV
+        candidate_name = "Pasted_Resume"
+        if uploaded_file is not None:
+             candidate_name = file_name.rsplit('.', 1)[0]
+        
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        cv_key_name = f"{candidate_name.replace(' ', '_')}_{timestamp}"
+
         # Check for parsing errors
         if "error" in parsed_data:
             st.error(f"AI Parsing Failed: {parsed_data['error']}")
             st.code(parsed_data.get('raw_output', 'No raw output available.'), language='text')
             # Store the error string instead of the dictionary
-            st.session_state.managed_cvs[f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"] = "Parsing Error: " + parsed_data['error']
+            error_key = f"ERROR_{candidate_name.replace(' ', '_')}_{timestamp}"
+            st.session_state.managed_cvs[error_key] = "Parsing Error: " + parsed_data['error']
+            st.session_state.current_resume_name = error_key
+            st.session_state.show_cv_output = error_key
+            st.rerun()
             return
 
         # --- Success & Storage ---
         
-        # Determine a unique key name for the new CV
-        candidate_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-        cv_key_name = f"{candidate_name}_{timestamp}"
+        # Use the name found by the LLM if available
+        candidate_name_llm = parsed_data.get('name', candidate_name.replace('_', ' '))
+        # Regenerate key name using parsed name for better key structure
+        cv_key_name = f"{candidate_name_llm.replace(' ', '_')}_{timestamp}"
         
         # Store the new structured CV
         st.session_state.managed_cvs[cv_key_name] = parsed_data
@@ -730,8 +752,13 @@ def resume_parsing_tab():
         # Convert lists back to newline separated strings for text areas
         if isinstance(parsed_data.get('skills'), list):
             st.session_state.form_skills_value = "\n".join([str(s) for s in parsed_data['skills']])
+        else:
+             st.session_state.form_skills_value = ""
+
         if isinstance(parsed_data.get('strength'), list):
             st.session_state.form_strengths_input = "\n".join([str(s) for s in parsed_data['strength']])
+        else:
+             st.session_state.form_strengths_input = ""
             
         # Assign structured lists directly
         st.session_state.form_education = parsed_data.get('education', [])
@@ -739,7 +766,7 @@ def resume_parsing_tab():
         st.session_state.form_certifications = parsed_data.get('certifications', [])
         st.session_state.form_projects = parsed_data.get('projects', [])
         
-        st.success(f"✅ Successfully parsed and structured CV for **{candidate_name}**!")
+        st.success(f"✅ Successfully parsed and structured CV for **{candidate_name_llm}**!")
         
         # Show the result in the display area
         st.session_state.show_cv_output = cv_key_name
@@ -880,7 +907,7 @@ def cv_form_content():
             col_edu, col_rem = st.columns([0.8, 0.2])
             with col_edu:
                 if isinstance(entry, dict):
-                    st.code(f"{entry.get('degree', 'N/A')} at {entry.get('college', 'N/A')} ({entry.get('dates', 'N/A')})", language="text")
+                    st.code(f"{entry.get('degree', 'N/A')} at {entry.get('college', 'N/A')} ({entry.get('university', 'N/A')} - {entry.get('dates', 'N/A')})", language="text")
                 else:
                     st.code(f"Corrupted Entry: {str(entry)}", language="text")
 
@@ -1212,9 +1239,9 @@ def batch_jd_match_tab():
     
     cv_data = st.session_state.managed_cvs[current_cv_name]
     
-    # Validate CV data type
+    # Validate CV data type (Critical check before proceeding with matching logic)
     if not isinstance(cv_data, dict):
-        st.error(f"❌ **Error: Current CV data is corrupted.** Please re-parse/re-save the CV '{current_cv_name}'.")
+        st.error(f"❌ **Error:** Current CV data is corrupted/unstructured and cannot be matched. Please re-parse/re-save the CV '{current_cv_name}'.")
         st.code(str(cv_data), language="text")
         return
         
@@ -1360,7 +1387,7 @@ def batch_jd_match_tab():
         st.markdown("### Detailed Reports")
         
         for res in match_results:
-            # CORRECTED LINE 1364: Removed the extra closing parenthesis ')' after the dictionary key
+            # Corrected line 1364 from previous fix
             report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked)']} (Score: {res['Fit Score (out of 10)']}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
             
             with st.expander(report_title):
