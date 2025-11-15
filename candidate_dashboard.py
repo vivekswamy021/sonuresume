@@ -1360,8 +1360,8 @@ def batch_jd_match_tab():
         st.markdown("### Detailed Reports")
         
         for res in match_results:
-            # CORRECTED LINE 1363: Added missing single quote ' after Ranked
-            report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked)'])} (Score: {res['Fit Score (out of 10)']}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
+            # CORRECTED LINE 1364: Removed the extra closing parenthesis ')' after the dictionary key
+            report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked)']} (Score: {res['Fit Score (out of 10)']}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
             
             with st.expander(report_title):
                 st.markdown(f"#### **Summary of Match**")
