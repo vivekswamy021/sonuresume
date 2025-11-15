@@ -1339,7 +1339,7 @@ def jd_management_tab():
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT (RESTORED)
+# BATCH JD MATCH TAB CONTENT (FIXED)
 # -------------------------
 
 def batch_jd_match_tab():
@@ -1444,9 +1444,10 @@ def batch_jd_match_tab():
             }
             for r in results
         ]).set_index("Job Title")
-
+        
+        # 🐛 FIX: Removed .style.background_gradient which caused the ImportError
         st.dataframe(
-            df.style.background_gradient(cmap='Greens', subset=['Overall Fit (%)', 'Skills Match (%)', 'Experience Match (%)', 'Education Match (%)']),
+            df, 
             use_container_width=True,
             column_config={
                 "Overall Fit (%)": st.column_config.ProgressColumn(
