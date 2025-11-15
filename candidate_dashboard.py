@@ -304,7 +304,12 @@ def format_cv_to_html(cv_data, cv_name):
             return ""
         # Ensures items are strings before joining
         string_items = [str(item) for item in items]
-        return f"<ul>{''.join(f'<{tag}>{item}</{tag}>') for item in string_items}</ul>"
+        
+        # --- SYNTAX FIX APPLIED HERE ---
+        # FIX: Move the list comprehension for item creation outside the final f-string
+        list_items_html = ''.join(f'<{tag}>{item}</{tag}>' for item in string_items)
+        return f"<ul>{list_items_html}</ul>"
+        # --- END FIX ---
 
     # Function to format experience/education sections
     def format_section(title, items, format_func):
@@ -1120,7 +1125,6 @@ def cv_form_content():
         generate_and_display_cv(st.session_state.show_cv_output)
         st.markdown("---")
 
-# --- CV MANAGEMENT TAB (With Guardrail Fix) ---
 def tab_cv_management():
     # Placeholder for the CV form content and display
     
