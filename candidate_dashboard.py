@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import pdfplumber
 import docx
-import openpyxl # Keeping this import even if unused in current extract logic for completeness
+import openpyxl
 import json
 import tempfile
 from groq import Groq
@@ -278,7 +278,7 @@ def parse_with_llm(text):
 
     return parsed
 
-# --- Shared Manual Input Logic (Unchanged from previous versions) ---
+# --- Shared Manual Input Logic ---
 
 def save_form_cv():
     """
@@ -316,9 +316,6 @@ def save_form_cv():
     st.session_state.show_cv_output = cv_key_name 
     
     st.success(f"🎉 CV for **'{current_form_name}'** saved/updated as **'{cv_key_name}'**!")
-
-# (Other helper functions like add_education_entry, add_experience_entry, etc., remain here)
-# ... (Leaving them out of the display for brevity, assuming they are in the full file)
 
 def add_education_entry(degree, college, university, date_from, date_to, state_key='form_education'):
     if not degree or not college or not university:
@@ -405,7 +402,7 @@ def remove_entry(index, state_key, entry_type='Item'):
         st.toast(f"Removed {entry_type}: {removed_name}")
 
 
-# --- CV Generation/Display Logic (Unchanged) ---
+# --- CV Generation/Display Logic ---
 
 def format_cv_to_markdown(cv_data, cv_name):
     """Formats the structured CV data into a viewable Markdown string."""
@@ -474,10 +471,18 @@ def format_cv_to_markdown(cv_data, cv_name):
     if cv_data.get('projects'):
         for proj in cv_data['projects']:
             tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
+            app_link = proj.get('app_link', 'N/A')
+            
+            # FIX APPLIED HERE: Displaying the app link if it exists and is not 'N/A'
+            link_md = ""
+            if app_link and app_link != 'N/A':
+                link_md = f"\n* **App/Repo Link:** [{app_link}]({app_link})"
+                
             md += f"""
 ### **{proj.get('name', 'N/A')}**
 * *Description:* {proj.get('description', 'N/A')}
 * *Technologies:* {tech_str}
+{link_md}
 """
     else:
         md += "* No project entries found."
@@ -547,7 +552,7 @@ def generate_and_display_cv(cv_name):
 
 
 # -------------------------
-# NEW: RESUME PARSING TAB CONTENT
+# RESUME PARSING TAB CONTENT
 # -------------------------
 
 def resume_parsing_tab():
@@ -648,7 +653,7 @@ def resume_parsing_tab():
 
 
 # -------------------------
-# CORE CV FORM FUNCTION (Unchanged)
+# CORE CV FORM FUNCTION 
 # -------------------------
 
 def cv_form_content():
