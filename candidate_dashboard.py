@@ -375,10 +375,18 @@ def mock_jd_match(cv_data, jd_data):
     # --- Mock Role and Job Type based on JD ---
     job_role = jd_data.get('title', 'N/A')
     role_type = "Full-time"
-    if 'contract' in jd_title_lower or 'temp' in jd_title_lower:
-        role_type = "Contract"
-    elif 'part-time' in jd_title_lower:
+    jd_raw_text_lower = jd_data.get('raw_text', '').lower()
+    
+    if 'internship' in jd_raw_text_lower:
+        role_type = "Internship"
+    elif 'part-time' in jd_raw_text_lower:
         role_type = "Part-time"
+    elif 'hybrid' in jd_raw_text_lower or 'mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower:
+        role_type = "Hybrid"
+    elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
+        role_type = "Remote"
+    elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
+        role_type = "Contract/Temp"
 
 
     # --- 7. Summary Generation & Final Return (FIXED for guaranteed keys) ---
@@ -1614,7 +1622,182 @@ def batch_jd_match_tab():
 
     else:
         st.info("Run the Match Analysis above to generate the report.")
+
+# -------------------------
+# NEW: FILTER JD TAB CONTENT
+# -------------------------
+
+def filter_jd_tab():
+    st.header("🔍 Filter Job Descriptions")
+    st.caption("Use the filters below to narrow down the saved JDs.")
+
+    # --- Filter Inputs ---
+    with st.form("jd_filter_form"):
+        st.markdown("#### 1. Filter by Skills")
+        col_skills, col_count = st.columns([0.7, 0.3])
+        with col_skills:
+            filter_skills_input = st.text_input(
+                "Enter key skills (comma-separated)",
+                key="filter_skills_input",
+                placeholder="Python, SQL, AWS, Leadership"
+            )
+        with col_count:
+            filter_min_skills = st.number_input(
+                "Min Matching Skills",
+                min_value=0,
+                max_value=10,
+                value=2,
+                step=1,
+                key="filter_min_skills"
+            )
+
+        st.markdown("---")
+        st.markdown("#### 2. Filter by Job Type & Role")
         
+        col_job_type, col_role = st.columns(2)
+        with col_job_type:
+            filter_job_type = st.multiselect(
+                "Select Job Type(s)",
+                options=['Full-time', 'Internship', 'Part-time', 'Hybrid', 'Remote', 'Contract/Temp'],
+                key="filter_job_type",
+                default=st.session_state.get('filter_job_type_default', [])
+            )
+            st.session_state.filter_job_type_default = filter_job_type # Store selection for persistence
+            
+        with col_role:
+            filter_role_input = st.text_input(
+                "Enter Role Keyword (e.g., 'Analyst', 'Engineer', 'Manager')",
+                key="filter_role_input",
+                placeholder="Data Scientist"
+            )
+
+        apply_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("#### 3. Matched Job Descriptions")
+
+    if apply_button:
+        
+        # --- Pre-process Filters ---
+        search_skills = {s.strip().lower() for s in filter_skills_input.split(',') if s.strip()}
+        search_roles = {r.strip().lower() for r in filter_role_input.split(',') if r.strip()}
+        
+        if not (search_skills or filter_job_type or search_roles):
+            st.warning("Please enter or select at least one filter criterion to apply.")
+            st.session_state.filtered_jds = []
+            st.rerun()
+
+        matched_jds = []
+        
+        valid_jds = st.session_state.managed_jds
+        
+        with st.spinner("Applying filters..."):
+            for jd_key, jd_data in valid_jds.items():
+                if isinstance(jd_data, str):
+                    continue # Skip corrupted entries
+                
+                jd_title_lower = jd_data.get('title', '').lower()
+                jd_raw_text_lower = jd_data.get('raw_text', '').lower()
+                jd_skills_lower = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
+
+                # --- Skills Filter Logic ---
+                skills_match_count = 0
+                if search_skills:
+                    common_skills = search_skills.intersection(jd_skills_lower)
+                    skills_match_count = len(common_skills)
+                    if skills_match_count < filter_min_skills:
+                        continue # Failed skills filter
+
+                # --- Job Type Filter Logic (Uses a simple keyword search in raw text) ---
+                job_type_match = False
+                if filter_job_type:
+                    # Determine the JD's job type (Mocked logic, same as in mock_jd_match)
+                    jd_type_mock = "Full-time"
+                    if 'internship' in jd_raw_text_lower:
+                        jd_type_mock = "Internship"
+                    elif 'part-time' in jd_raw_text_lower:
+                        jd_type_mock = "Part-time"
+                    elif 'hybrid' in jd_raw_text_lower or ('mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower):
+                        jd_type_mock = "Hybrid"
+                    elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
+                        jd_type_mock = "Remote"
+                    elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
+                        jd_type_mock = "Contract/Temp"
+
+                    if jd_type_mock in filter_job_type:
+                        job_type_match = True
+                    else:
+                        continue # Failed job type filter
+                else:
+                    job_type_match = True # Pass if no job type selected
+
+                # --- Role Filter Logic (Search in Title) ---
+                role_match = False
+                if search_roles:
+                    if any(role in jd_title_lower for role in search_roles):
+                        role_match = True
+                    else:
+                        continue # Failed role filter
+                else:
+                    role_match = True # Pass if no role entered
+
+                # If all filters passed, add to matches
+                if skills_match_count >= filter_min_skills and job_type_match and role_match:
+                    matched_jds.append({
+                        "JD Key": jd_key,
+                        "Title": jd_data.get('title', jd_key),
+                        "Job Type": jd_type_mock,
+                        "Skills Found": skills_match_count,
+                        "Experience Level": jd_data.get('experience_level', 'N/A')
+                    })
+        
+        st.session_state.filtered_jds = matched_jds
+        st.success(f"Filter complete: Found **{len(matched_jds)}** matching Job Descriptions.")
+        
+        # Sort by skills match count (descending)
+        matched_jds.sort(key=lambda x: x['Skills Found'], reverse=True)
+        
+    # --- Display Results ---
+    if st.session_state.get('filtered_jds'):
+        results_df = pd.DataFrame(st.session_state.filtered_jds)
+        
+        # Use simple dataframe for display
+        st.dataframe(
+            results_df.set_index("JD Key"), 
+            use_container_width=True,
+            column_order=["Title", "Job Type", "Experience Level", "Skills Found"]
+        )
+
+        st.markdown("---")
+        st.markdown("##### View Details")
+        
+        # Display buttons to view individual JD details
+        jd_keys = results_df['JD Key'].tolist()
+        
+        max_cols = 3 
+        cols = st.columns(max_cols) 
+
+        for i, key in enumerate(jd_keys):
+            jd_data = st.session_state.managed_jds[key]
+            title = jd_data.get('title', 'N/A')
+            
+            with cols[i % max_cols]:
+                with st.container(border=True):
+                    st.markdown(f"**{i+1}. {title}**")
+                    if st.button("👁️ View JD Details", key=f"view_filtered_jd_btn_{key}", use_container_width=True):
+                        st.session_state.selected_jd_key = key
+                        st.session_state.show_jd_details_from_filter = True # Flag to show single JD view
+                        st.rerun()
+                        
+        if st.session_state.get('show_jd_details_from_filter'):
+            display_jd_details(st.session_state.selected_jd_key)
+            
+    elif not apply_button:
+        st.info("Set your filters and click 'Apply Filters' to see matched JDs.")
+    elif st.session_state.get('filtered_jds') is not None and len(st.session_state.filtered_jds) == 0:
+        st.warning("No Job Descriptions matched the current filter criteria.")
+
+
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION
 # -------------------------
@@ -1625,7 +1808,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -1640,9 +1823,11 @@ def candidate_dashboard():
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
     if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None
-    if "selected_jds_for_match" not in st.session_state: st.session_state.selected_jds_for_match = [] # For batch matching UI persistence
-    if "candidate_results" not in st.session_state: st.session_state.candidate_results = None # To store the match results
-    
+    if "selected_jds_for_match" not in st.session_state: st.session_state.selected_jds_for_match = [] 
+    if "candidate_results" not in st.session_state: st.session_state.candidate_results = None 
+    if "filtered_jds" not in st.session_state: st.session_state.filtered_jds = None # To store filter results
+    if "show_jd_details_from_filter" not in st.session_state: st.session_state.show_jd_details_from_filter = False # To manage single JD detail view state
+
     # Initialize keys for personal details to ensure stability
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
     if "form_email_value" not in st.session_state: st.session_state.form_email_value = ""
@@ -1654,7 +1839,8 @@ def candidate_dashboard():
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
 
     # --- Main Content with Tabs ---
-    tab_parsing, tab_management, tab_jd, tab_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management", "🏆 Batch JD Match"])
+    # ADDED 'tab_filter_jd'
+    tab_parsing, tab_management, tab_jd, tab_filter_jd, tab_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management", "🔍 Filter JD", "🏆 Batch JD Match"])
     
     with tab_parsing:
         resume_parsing_tab()
@@ -1665,6 +1851,9 @@ def candidate_dashboard():
     with tab_jd:
         jd_management_tab()
 
+    with tab_filter_jd: # NEW TAB
+        filter_jd_tab()
+        
     with tab_match:
         batch_jd_match_tab()
 
