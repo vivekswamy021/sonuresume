@@ -375,7 +375,6 @@ def mock_jd_match(cv_data, jd_data):
     }
 
 # --- Shared Manual Input Logic (CV Form) ---
-# ... (All form helper functions remain the same as the user's code)
 def save_form_cv():
     """
     Callback function to compile the structured CV data from form states and save it.
@@ -600,7 +599,7 @@ def generate_and_display_cv(cv_name):
         
     cv_data = st.session_state.managed_cvs[cv_name]
     
-    # Check if cv_data is actually a dictionary before proceeding (FIXED: The core check)
+    # Check if cv_data is actually a dictionary before proceeding (CRUCIAL CHECK)
     if not isinstance(cv_data, dict):
         st.error(f"Error: Stored data for CV '{cv_name}' is corrupted or contains an error string. Please re-parse or re-save the CV.")
         st.code(str(cv_data)) # Show the corrupted data
@@ -698,6 +697,7 @@ def resume_parsing_tab():
             st.error(f"Text Extraction Failed: {extracted_text}")
             # Store error string to prevent later attribute errors if logic fails to check
             st.session_state.managed_cvs[f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"] = extracted_text
+            st.session_state.current_resume_name = None # Clear current resume if parsing fails
             return
             
         # Proceed with LLM parsing
@@ -709,7 +709,9 @@ def resume_parsing_tab():
             st.error(f"AI Parsing Failed: {parsed_data['error']}")
             st.code(parsed_data.get('raw_output', 'No raw output available.'), language='text')
             # Store the error string instead of the dictionary
-            st.session_state.managed_cvs[f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"] = "Parsing Error: " + parsed_data['error']
+            error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
+            st.session_state.managed_cvs[error_key] = "Parsing Error: " + parsed_data['error']
+            st.session_state.current_resume_name = error_key # Set current resume to the error key
             return
 
         # --- Success & Storage ---
@@ -1043,6 +1045,36 @@ def tab_cv_management():
     if "form_experience" not in st.session_state: st.session_state.form_experience = []
     if "form_certifications" not in st.session_state: st.session_state.form_certifications = []
     if "form_projects" not in st.session_state: st.session_state.form_projects = []
+
+    # --- CRUCIAL FIX: Reset form state if the current CV is an error string ---
+    current_cv_name = st.session_state.get('current_resume_name')
+    if current_cv_name and current_cv_name in st.session_state.managed_cvs:
+        cv_data = st.session_state.managed_cvs[current_cv_name]
+        
+        # Check if CV data is a string (which means it's an error message)
+        if isinstance(cv_data, str):
+            st.warning(f"⚠️ Corrupted CV data found under key '{current_cv_name}'. Resetting form fields to empty. Please upload/parse a new CV or enter manually.")
+            
+            # Reset all related form state variables to empty/default values
+            st.session_state.form_name_value = ""
+            st.session_state.form_email_value = ""
+            st.session_state.form_phone_value = ""
+            st.session_state.form_linkedin_value = ""
+            st.session_state.form_github_value = ""
+            st.session_state.form_summary_value = ""
+            st.session_state.form_skills_value = ""
+            st.session_state.form_strengths_input = ""
+            st.session_state.form_education = []
+            st.session_state.form_experience = []
+            st.session_state.form_certifications = []
+            st.session_state.form_projects = []
+            st.session_state.current_resume_name = None 
+            st.session_state.show_cv_output = None
+            
+            # Show the error string to the user
+            st.error(f"Corrupted Data: {cv_data}")
+            
+    # --- End of CRUCIAL FIX ---
 
     cv_form_content()
 
