@@ -13,6 +13,7 @@ from datetime import date
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 from datetime import datetime
 import random 
+import pandas as pd
 
 # -------------------------
 # CONFIGURATION & API SETUP 
@@ -183,12 +184,9 @@ def mock_jd_match(cv_data, jd_data):
     """
     Compares CV data against JD data using a detailed, weighted mock calculation
     to derive Skills, Experience, and Education match percentages.
-    
-    FIX: Added defensive checks against missing/empty lists and division by zero.
     """
     
     # 1. Prepare Data
-    # Ensure all data components are list/set before processing
     jd_skills = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
     cv_skills = {s.lower() for s in cv_data.get('skills', []) if isinstance(s, str)}
     
@@ -202,17 +200,14 @@ def mock_jd_match(cv_data, jd_data):
     # --- 2. Skills Match Calculation ---
     
     if not jd_skills:
-        # FIX: If no skills are required, assume a decent match
         skills_percent = 75 
     else:
-        # Check for intersection of skills
         common_skills = jd_skills.intersection(cv_skills)
-        # FIX: Check for division by zero
         if len(jd_skills) > 0:
             overlap_ratio = len(common_skills) / len(jd_skills)
             skills_percent = int(overlap_ratio * 100)
         else:
-            skills_percent = 0 # Should be caught by the outer `if not jd_skills`
+            skills_percent = 0 
     
     skills_percent = max(0, min(100, skills_percent))
 
@@ -220,49 +215,40 @@ def mock_jd_match(cv_data, jd_data):
     # --- 3. Education/Qualification Match Calculation ---
     
     if not jd_qualifications:
-        # FIX: If no qualifications are required, assume a good match
         education_percent = 70 
     else:
         required_count = len(jd_qualifications)
         match_count = 0
         
-        # Check CV education degrees against JD qualifications
         for jd_qual in jd_qualifications:
-            # Simple check for major degree types (e.g., 'b.tech' or 'bachelor')
             if any(jd_qual in edu for edu in cv_education):
                  match_count += 1
-            # Check CV certifications against JD qualifications
             elif any(jd_qual in cert for cert in cv_certifications):
                  match_count += 1
 
-        # FIX: Check for division by zero
         if required_count > 0:
             education_percent = int((match_count / required_count) * 100)
         else:
-             education_percent = 0 # Should be caught by the outer `if not jd_qualifications`
+             education_percent = 0 
         
     education_percent = max(0, min(100, education_percent))
 
 
     # --- 4. Experience Match Calculation ---
     
-    # Simple check for role relevance and years (mocked for simplicity)
     experience_level_jd = jd_data.get('experience_level', 'mid-level').lower()
     cv_has_relevant_role = any(jd_title_lower in role or role in jd_title_lower for role in cv_experience_roles)
     
-    # Mock Years of Experience from CV (count of experience entries)
     cv_years_mock = len(cv_data.get('experience', []))
     
     exp_score = 0
     
-    # Give a small base score if there is any experience at all
     if cv_years_mock > 0:
          exp_score += 10
          
     if cv_has_relevant_role:
-        exp_score += 40 # Bonus for previous similar role/title
+        exp_score += 40 
         
-    # Check seniority alignment
     if experience_level_jd == 'senior' and cv_years_mock >= 5:
         exp_score += 40
     elif experience_level_jd == 'mid-level' and cv_years_mock >= 2:
@@ -270,15 +256,13 @@ def mock_jd_match(cv_data, jd_data):
     elif experience_level_jd == 'entry' and cv_years_mock >= 0:
          exp_score += 40
     
-    # Add a buffer based on total experience entries
-    exp_score += min(10, cv_years_mock * 2) # Reduced weight slightly
+    exp_score += min(10, cv_years_mock * 2) 
 
     experience_percent = max(0, min(100, exp_score))
     
     # --- 5. Final Fit Score (Weighted Average) ---
     
     # Weighting: Skills (50%), Experience (35%), Education (15%)
-    # This calculation should *never* fail if the component percentages are valid numbers (0-100)
     weighted_score = (skills_percent * 0.50) + (experience_percent * 0.35) + (education_percent * 0.15)
     
     final_score_100 = int(weighted_score)
@@ -302,11 +286,13 @@ def mock_jd_match(cv_data, jd_data):
         "summary": summary,
         "skills_percent": skills_percent,
         "experience_percent": experience_percent,
-        "education_percent": education_percent
+        "education_percent": education_percent,
+        "common_skills": list(common_skills) # Added for detailed report
     }
 
 
-# --- PDF Generation Mock (DEPRECATED: Now generating HTML) ---
+# --- PDF/HTML Generation & CV Display Functions ---
+
 def generate_pdf_mock(cv_data, cv_name):
     """Mocks the generation of a PDF file and returns its path/bytes."""
     
@@ -314,38 +300,28 @@ def generate_pdf_mock(cv_data, cv_name):
     
     return warning_message.encode('utf-8') 
 
-# --- NEW HTML Generation for Print-to-PDF ---
 def format_cv_to_html(cv_data, cv_name):
     """Formats the structured CV data into a clean HTML string for printing."""
     
-    # Function to safely create HTML lists
     def list_to_html(items, tag='li'):
         if not items:
             return ""
-        # Ensures items are strings before joining
         string_items = [str(item) for item in items]
-        
-        # --- SYNTAX FIX APPLIED HERE ---
-        # FIX: Move the list comprehension for item creation outside the final f-string
         list_items_html = ''.join(f'<{tag}>{item}</{tag}>' for item in string_items)
         return f"<ul>{list_items_html}</ul>"
-        # --- END FIX ---
 
-    # Function to format experience/education sections
     def format_section(title, items, format_func):
         html = f'<h2>{title}</h2>'
         if not items:
             return html + '<p>No entries found.</p>'
         
         for item in items:
-            # ⭐ Defensive Check: Ensure item is a dictionary
             if isinstance(item, dict):
                 html += format_func(item)
             else:
                 html += f'<div class="entry"><p><strong>Error:</strong> Corrupted entry: <code>{str(item)}</code></p></div>'
         return html
 
-    # Specific formatters
     def format_experience(exp):
         return f"""
         <div class="entry">
@@ -385,7 +361,6 @@ def format_cv_to_html(cv_data, cv_name):
         </div>
         """
         
-    # --- Main HTML Structure ---
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -458,11 +433,170 @@ def format_cv_to_html(cv_data, cv_name):
     """
     return html_content.strip()
 
+def format_cv_to_markdown(cv_data, cv_name):
+    """Formats the structured CV data into a viewable Markdown string."""
+    md = f"""
+# {cv_data.get('name', cv_name)}
+### Contact & Links
+* **Email:** {cv_data.get('email', 'N/A')}
+* **Phone:** {cv_data.get('phone', 'N/A')}
+* **LinkedIn:** [{cv_data.get('linkedin', 'N/A')}]({cv_data.get('linkedin', '#')})
+* **GitHub:** [{cv_data.get('github', 'N/A')}]({cv_data.get('github', '#')})
+
+---
+## Summary
+> {cv_data.get('summary', 'N/A')}
+
+---
+## Skills
+* {', '.join([str(s) for s in cv_data.get('skills', ['N/A'])])}
+
+---
+## Experience
+"""
+    if cv_data.get('experience'):
+        for exp in cv_data['experience']:
+            if isinstance(exp, dict):
+                md += f"""
+### **{exp.get('role', 'N/A')}**
+* **Company:** {exp.get('company', 'N/A')}
+* **Dates:** {exp.get('dates', 'N/A')}
+* **Key Project/Focus:** {exp.get('project', 'General Duties')}
+"""
+            else:
+                md += f"* **Error:** Corrupted entry: `{str(exp)}`\n"
+    else:
+        md += "* No experience entries found."
+
+    md += """
+---
+## Education
+"""
+    if cv_data.get('education'):
+        for edu in cv_data['education']:
+            if isinstance(edu, dict):
+                md += f"""
+### **{edu.get('degree', 'N/A')}**
+* **Institution:** {edu.get('college', 'N/A')} ({edu.get('university', 'N/A')})
+* **Dates:** {edu.get('dates', 'N/A')}
+"""
+            else:
+                md += f"* **Error:** Corrupted entry: `{str(edu)}`\n"
+    else:
+        md += "* No education entries found."
+    
+    md += """
+---
+## Certifications
+"""
+    if cv_data.get('certifications'):
+        for cert in cv_data['certifications']:
+            if isinstance(cert, dict):
+                md += f"""
+* **{cert.get('name', 'N/A')}** - {cert.get('title', 'N/A')}
+    * *Issued by:* {cert.get('given_by', 'N/A')}
+    * *Date:* {cert.get('date_received', 'N/A')}
+"""
+            else:
+                 md += f"* **Error:** Corrupted entry: `{str(cert)}`\n"
+    else:
+        md += "* No certification entries found."
+        
+    md += """
+---
+## Projects
+"""
+    if cv_data.get('projects'):
+        for proj in cv_data['projects']:
+            if isinstance(proj, dict):
+                tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
+                app_link = proj.get('app_link', 'N/A')
+                
+                link_md = ""
+                if app_link and app_link != 'N/A':
+                    link_md = f"\n* **App/Repo Link:** [{app_link}]({app_link})"
+                    
+                md += f"""
+### **{proj.get('name', 'N/A')}**
+* *Description:* {proj.get('description', 'N/A')}
+* *Technologies:* {tech_str}
+{link_md}
+"""
+            else:
+                md += f"* **Error:** Corrupted entry: `{str(proj)}`\n"
+    else:
+        md += "* No project entries found."
+        
+    md += """
+---
+## Strengths
+"""
+    if cv_data.get('strength'):
+        md += "* " + "\n* ".join([str(s) for s in cv_data.get('strength', ['N/A'])])
+    else:
+        md += "* No strengths listed."
+
+    return md
+
+def generate_and_display_cv(cv_name):
+    """Generates the final structured CV data from session state and displays it."""
+    
+    if cv_name not in st.session_state.managed_cvs:
+        st.error(f"Error: CV '{cv_name}' not found in managed CVs.")
+        return
+        
+    cv_data = st.session_state.managed_cvs[cv_name]
+    
+    if not isinstance(cv_data, dict):
+        st.error(f"Error: Stored data for CV '{cv_name}' is corrupted or contains an error string. Please re-parse or re-save the CV.")
+        st.code(str(cv_data))
+        return
+        
+    st.markdown(f"### 📄 CV View: **{cv_data.get('name', cv_name)}**")
+    
+    tab_md, tab_json, tab_pdf = st.tabs(["Markdown View", "JSON Data", "HTML/PDF Download"])
+
+    with tab_md:
+        md_output = format_cv_to_markdown(cv_data, cv_name)
+        st.markdown(md_output)
+        
+        st.download_button(
+            label="Download Markdown (.md)",
+            data=md_output.encode('utf-8'),
+            file_name=f"{cv_name}_cv.md",
+            mime="text/markdown",
+            key=f"download_md_btn_{cv_name}" 
+        )
+
+    with tab_json:
+        json_output = json.dumps(cv_data, indent=4)
+        st.code(json_output, language="json")
+        st.download_button(
+            label="Download JSON (.json)",
+            data=json_output,
+            file_name=f"{cv_name}_data.json",
+            mime="application/json",
+            key=f"download_json_btn_{cv_name}" 
+        )
+        
+    with tab_pdf:
+        html_output = format_cv_to_html(cv_data, cv_name)
+        
+        st.info("To get a PDF, download the HTML file, open it in your browser, and use the browser's 'Print' function (Ctrl+P or Cmd+P), selecting 'Save as PDF' as the destination.")
+        
+        st.download_button(
+            label="Download CV as HTML (Print-to-PDF)",
+            data=html_output.encode('utf-8'),
+            file_name=f"{cv_name}.html",
+            mime="text/html",
+            key=f"download_html_btn_{cv_name}"
+        )
+
 # --- Shared Manual Input Logic (CV Form) ---
+
 def save_form_cv():
     """
     Callback function to compile the structured CV data from form states and save it.
-    It automatically determines a key name based on current state or uses a dated default.
     """
     current_form_name = st.session_state.get('form_name_value', '').strip()
     
@@ -580,175 +714,7 @@ def remove_entry(index, state_key, entry_type='Item'):
         del st.session_state[state_key][index]
         st.toast(f"Removed {entry_type}: {removed_name}")
 
-def format_cv_to_markdown(cv_data, cv_name):
-    """Formats the structured CV data into a viewable Markdown string. (Includes AttributeError Fix)"""
-    md = f"""
-# {cv_data.get('name', cv_name)}
-### Contact & Links
-* **Email:** {cv_data.get('email', 'N/A')}
-* **Phone:** {cv_data.get('phone', 'N/A')}
-* **LinkedIn:** [{cv_data.get('linkedin', 'N/A')}]({cv_data.get('linkedin', '#')})
-* **GitHub:** [{cv_data.get('github', 'N/A')}]({cv_data.get('github', '#')})
-
----
-## Summary
-> {cv_data.get('summary', 'N/A')}
-
----
-## Skills
-* {', '.join([str(s) for s in cv_data.get('skills', ['N/A'])])}
-
----
-## Experience
-"""
-    if cv_data.get('experience'):
-        for exp in cv_data['experience']:
-            # ⭐ FIX: Ensure item is a dictionary
-            if isinstance(exp, dict):
-                md += f"""
-### **{exp.get('role', 'N/A')}**
-* **Company:** {exp.get('company', 'N/A')}
-* **Dates:** {exp.get('dates', 'N/A')}
-* **Key Project/Focus:** {exp.get('project', 'General Duties')}
-"""
-            else:
-                md += f"* **Error:** Corrupted entry: `{str(exp)}`\n"
-    else:
-        md += "* No experience entries found."
-
-    md += """
----
-## Education
-"""
-    if cv_data.get('education'):
-        for edu in cv_data['education']:
-            # ⭐ FIX: Ensure item is a dictionary
-            if isinstance(edu, dict):
-                md += f"""
-### **{edu.get('degree', 'N/A')}**
-* **Institution:** {edu.get('college', 'N/A')} ({edu.get('university', 'N/A')})
-* **Dates:** {edu.get('dates', 'N/A')}
-"""
-            else:
-                md += f"* **Error:** Corrupted entry: `{str(edu)}`\n"
-    else:
-        md += "* No education entries found."
-    
-    md += """
----
-## Certifications
-"""
-    if cv_data.get('certifications'):
-        for cert in cv_data['certifications']:
-            # ⭐ FIX for the requested error: Ensure item is a dictionary
-            if isinstance(cert, dict):
-                md += f"""
-* **{cert.get('name', 'N/A')}** - {cert.get('title', 'N/A')}
-    * *Issued by:* {cert.get('given_by', 'N/A')}
-    * *Date:* {cert.get('date_received', 'N/A')}
-"""
-            else:
-                 # Safely display the string if it's not a dict
-                 md += f"* **Error:** Corrupted entry: `{str(cert)}`\n"
-    else:
-        md += "* No certification entries found."
-        
-    md += """
----
-## Projects
-"""
-    if cv_data.get('projects'):
-        for proj in cv_data['projects']:
-            # ⭐ FIX: Ensure item is a dictionary
-            if isinstance(proj, dict):
-                tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
-                app_link = proj.get('app_link', 'N/A')
-                
-                # Displaying the app link if it exists and is not 'N/A'
-                link_md = ""
-                if app_link and app_link != 'N/A':
-                    link_md = f"\n* **App/Repo Link:** [{app_link}]({app_link})"
-                    
-                md += f"""
-### **{proj.get('name', 'N/A')}**
-* *Description:* {proj.get('description', 'N/A')}
-* *Technologies:* {tech_str}
-{link_md}
-"""
-            else:
-                md += f"* **Error:** Corrupted entry: `{str(proj)}`\n"
-    else:
-        md += "* No project entries found."
-        
-    md += """
----
-## Strengths
-"""
-    if cv_data.get('strength'):
-        md += "* " + "\n* ".join([str(s) for s in cv_data.get('strength', ['N/A'])])
-    else:
-        md += "* No strengths listed."
-
-    return md
-
-def generate_and_display_cv(cv_name):
-    """Generates the final structured CV data from session state and displays it."""
-    
-    if cv_name not in st.session_state.managed_cvs:
-        st.error(f"Error: CV '{cv_name}' not found in managed CVs.")
-        return
-        
-    cv_data = st.session_state.managed_cvs[cv_name]
-    
-    # Check if cv_data is actually a dictionary before proceeding (CRUCIAL CHECK)
-    if not isinstance(cv_data, dict):
-        st.error(f"Error: Stored data for CV '{cv_name}' is corrupted or contains an error string. Please re-parse or re-save the CV.")
-        st.code(str(cv_data)) # Show the corrupted data
-        return
-        
-    st.markdown(f"### 📄 CV View: **{cv_data.get('name', cv_name)}**")
-    
-    tab_md, tab_json, tab_pdf = st.tabs(["Markdown View", "JSON Data", "HTML/PDF Download"])
-
-    # --- Markdown View ---
-    with tab_md:
-        md_output = format_cv_to_markdown(cv_data, cv_name)
-        st.markdown(md_output)
-        
-        st.download_button(
-            label="Download Markdown (.md)",
-            data=md_output.encode('utf-8'),
-            file_name=f"{cv_name}_cv.md",
-            mime="text/markdown",
-            key=f"download_md_btn_{cv_name}" 
-        )
-
-    # --- JSON View ---
-    with tab_json:
-        json_output = json.dumps(cv_data, indent=4)
-        st.code(json_output, language="json")
-        st.download_button(
-            label="Download JSON (.json)",
-            data=json_output,
-            file_name=f"{cv_name}_data.json",
-            mime="application/json",
-            key=f"download_json_btn_{cv_name}" 
-        )
-        
-    # --- HTML/PDF View ---
-    with tab_pdf:
-        html_output = format_cv_to_html(cv_data, cv_name)
-        
-        st.info("To get a PDF, download the HTML file, open it in your browser, and use the browser's 'Print' function (Ctrl+P or Cmd+P), selecting 'Save as PDF' as the destination.")
-        
-        st.download_button(
-            label="Download CV as HTML (Print-to-PDF)",
-            data=html_output.encode('utf-8'),
-            file_name=f"{cv_name}.html",
-            mime="text/html",
-            key=f"download_html_btn_{cv_name}"
-        )
-
+# --- Resume Parsing Tab ---
 def resume_parsing_tab():
     st.header("Upload/Paste Resume for AI Parsing")
     st.caption("Upload a file or paste text to extract structured data and save it as a structured CV.")
@@ -770,7 +736,6 @@ def resume_parsing_tab():
     
     st.markdown("---")
     
-    # Check if Groq API key is set before enabling the button
     if not GROQ_API_KEY:
         st.error("GROQ_API_KEY is missing. AI Parsing features are disabled.")
         process_button = st.button("✨ Parse and Load Uploaded File", type="primary", use_container_width=True, disabled=True)
@@ -783,7 +748,6 @@ def resume_parsing_tab():
         file_name = "Pasted_Resume"
         
         if uploaded_file is not None:
-            # Handle uploaded file
             file_name = uploaded_file.name
             file_bytes = uploaded_file.getvalue()
             file_type = get_file_type(file_name)
@@ -792,56 +756,40 @@ def resume_parsing_tab():
                 extracted_text = extract_content(file_type, file_bytes, file_name)
                 
         elif pasted_text.strip():
-            # Handle pasted text
             extracted_text = pasted_text.strip()
             
         else:
             st.warning("Please upload a file or paste text content to proceed with parsing.")
             return
 
-        # Check for extraction errors
         if extracted_text.startswith("Error") or not extracted_text:
             st.error(f"Text Extraction Failed: {extracted_text}")
-            # Store error string to prevent later attribute errors if logic fails to check
             error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
             st.session_state.managed_cvs[error_key] = extracted_text
             st.session_state.current_resume_name = error_key
             st.session_state.show_cv_output = error_key
             return
             
-        # Proceed with LLM parsing
         with st.spinner("🧠 Sending to Groq LLM for structured parsing..."):
             parsed_data = parse_cv_with_llm(extracted_text)
         
-        # Check for parsing errors
         if "error" in parsed_data:
             st.error(f"AI Parsing Failed: {parsed_data['error']}")
             st.code(parsed_data.get('raw_output', 'No raw output available.'), language='text')
-            # Store the error string instead of the dictionary
             error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
-            # Store the error as a string
             st.session_state.managed_cvs[error_key] = "AI Parsing Error: " + parsed_data['error']
-            st.session_state.current_resume_name = error_key # Set current resume to the error key
+            st.session_state.current_resume_name = error_key
             st.session_state.show_cv_output = error_key
             return
 
-        # --- Success & Storage ---
-        
-        # Determine a unique key name for the new CV
-        # Check if parsed_data is a dictionary before using .get()
         candidate_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
         cv_key_name = f"{candidate_name}_{timestamp}"
         
-        # Store the new structured CV
         st.session_state.managed_cvs[cv_key_name] = parsed_data
         st.session_state.current_resume_name = cv_key_name
         
-        # FIXED: Ensure parsed_data is a dict before assigning to form state
         if isinstance(parsed_data, dict):
-            # Set the parsed data to the manual form fields for potential editing
-            # This is where the original error occurred if parsed_data was a string.
-            # We now rely on the check above.
             st.session_state.form_name_value = parsed_data.get('name', '')
             st.session_state.form_email_value = parsed_data.get('email', '')
             st.session_state.form_phone_value = parsed_data.get('phone', '')
@@ -849,7 +797,6 @@ def resume_parsing_tab():
             st.session_state.form_github_value = parsed_data.get('github', '')
             st.session_state.form_summary_value = parsed_data.get('summary', '')
             
-            # Convert lists back to newline separated strings for text areas
             if isinstance(parsed_data.get('skills'), list):
                 st.session_state.form_skills_value = "\n".join([str(s) for s in parsed_data['skills']])
             else:
@@ -860,7 +807,6 @@ def resume_parsing_tab():
             else:
                  st.session_state.form_strengths_input = ""
                 
-            # Assign structured lists directly, ensuring defaults are used if keys are missing
             st.session_state.form_education = parsed_data.get('education', [])
             st.session_state.form_experience = parsed_data.get('experience', [])
             st.session_state.form_certifications = parsed_data.get('certifications', [])
@@ -868,16 +814,12 @@ def resume_parsing_tab():
         
             st.success(f"✅ Successfully parsed and structured CV for **{candidate_name}**! Data loaded for editing.")
         else:
-            # Should not happen now due to error checks above, but kept as a final safety net
             st.error(f"❌ Internal Error: Parsed data for **{candidate_name}** is not a dictionary. Please check LLM output logic.")
 
-        # Show the result in the display area
         st.session_state.show_cv_output = cv_key_name
-        st.rerun() # Rerun to refresh the CV form and display with new data
+        st.rerun() 
 
-# -------------------------
-# CORE CV FORM FUNCTION 
-# -------------------------
+# --- CORE CV FORM FUNCTION ---
 
 def cv_form_content():
     """Contains the logic for the manual CV form entry."""
@@ -927,18 +869,14 @@ def cv_form_content():
 
         col_from, col_to = st.columns(2)
         with col_from:
-            # Handle potential datetime conversion from parsing if it wasn't done
             default_date_from = date(2020, 1, 1)
             try:
-                # Attempt to get the latest experience date start
                 if st.session_state.form_experience and isinstance(st.session_state.form_experience[-1], dict):
                     latest_exp_date = st.session_state.form_experience[-1]['dates'].split(' - ')[0]
-                    # Assuming the date format is just year (e.g., '2020')
                     if len(latest_exp_date) == 4 and latest_exp_date.isdigit():
                         default_date_from = datetime.strptime(latest_exp_date, "%Y").date()
-                    elif '-' in latest_exp_date: # Handle full date format if it was generated that way
+                    elif '-' in latest_exp_date: 
                         default_date_from = datetime.strptime(latest_exp_date.split('-')[0].strip(), "%Y").date()
-
             except Exception:
                  pass
             
@@ -964,7 +902,6 @@ def cv_form_content():
         for i, entry in enumerate(experience_list):
             col_exp, col_rem = st.columns([0.8, 0.2])
             with col_exp:
-                # Need to ensure entry is a dictionary, though this path should ensure it.
                 if isinstance(entry, dict):
                     st.code(f"{entry.get('role', 'N/A')} at {entry.get('company', 'N/A')} ({entry.get('dates', 'N/A')})", language="text")
                 else:
@@ -1152,24 +1089,20 @@ def cv_form_content():
         st.markdown("---")
 
 def tab_cv_management():
-    # Placeholder for the CV form content and display
-    
     # Initialization for list-based state
     if "form_education" not in st.session_state: st.session_state.form_education = []
     if "form_experience" not in st.session_state: st.session_state.form_experience = []
     if "form_certifications" not in st.session_state: st.session_state.form_certifications = []
     if "form_projects" not in st.session_state: st.session_state.form_projects = []
 
-    # --- CRUCIAL FIX: Reset form state if the current CV is an error string ---
+    # Reset form state if the current CV is an error string
     current_cv_name = st.session_state.get('current_resume_name')
     if current_cv_name and current_cv_name in st.session_state.managed_cvs:
         cv_data = st.session_state.managed_cvs[current_cv_name]
         
-        # Check if CV data is a string (which means it's an error message)
         if isinstance(cv_data, str):
-            st.warning(f"⚠️ Corrupted CV data found under key '{current_cv_name}'. Resetting form fields to empty. Please upload/parse a new CV or enter manually.")
+            st.warning(f"⚠️ Corrupted CV data found under key '{current_cv_name}'. Resetting form fields to empty.")
             
-            # Reset all related form state variables to empty/default values
             st.session_state.form_name_value = ""
             st.session_state.form_email_value = ""
             st.session_state.form_phone_value = ""
@@ -1185,11 +1118,8 @@ def tab_cv_management():
             st.session_state.current_resume_name = None 
             st.session_state.show_cv_output = None
             
-            # Show the error string to the user
             st.error(f"Corrupted Data: {cv_data}")
             
-    # --- End of CRUCIAL FIX ---
-
     cv_form_content()
 
 # -------------------------
@@ -1206,20 +1136,16 @@ def process_jd_file(file, jd_type):
     extracted_text = extract_content(file_type, file_bytes, file_name)
     
     if extracted_text.startswith("Error"):
-        # Store the error string instead of a dictionary
         st.session_state.managed_jds[jd_key] = f"Extraction Error: Failed to read file content ({file_type})."
         return False, f"Extraction Failed for {file_name}: {extracted_text}"
         
     parsed_data = parse_jd_with_llm(extracted_text, jd_title=file_name)
     
     if "error" in parsed_data:
-        # Store the error string instead of a dictionary
         st.session_state.managed_jds[jd_key] = f"AI Parsing Error: {parsed_data['error']}"
         return False, f"AI Parsing Failed for {file_name}: {parsed_data['error']}"
     
-    # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
-    # Also save the raw text for display purposes (RETAINED FOR PARSING LOGIC BUT NOT DISPLAYED)
     st.session_state.managed_jds[jd_key]['raw_text'] = extracted_text
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
@@ -1230,13 +1156,11 @@ def process_jd_text(text):
     parsed_data = parse_jd_with_llm(text, jd_title="Pasted Text JD")
     
     if "error" in parsed_data:
-        # Store the error string instead of a dictionary
         st.session_state.managed_jds[jd_key] = f"AI Parsing Error: {parsed_data['error']}"
         return False, f"AI Parsing Failed: {parsed_data['error']}"
         
-    # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
-    st.session_state.managed_jds[jd_key]['raw_text'] = text # RETAINED FOR PARSING LOGIC BUT NOT DISPLAYED
+    st.session_state.managed_jds[jd_key]['raw_text'] = text
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
 def clear_all_jds():
@@ -1245,7 +1169,7 @@ def clear_all_jds():
     st.session_state.selected_jd_key = None
     st.toast("All saved JDs cleared!")
 
-## 🎯 MODIFIED FUNCTION: REMOVED RAW TEXT TAB/DISPLAY ##
+# Modified function: REMOVED RAW TEXT TAB/DISPLAY
 def display_jd_details(key):
     """Displays the details of the selected JD (Structured Summary ONLY)."""
     jd_data = st.session_state.managed_jds.get(key)
@@ -1255,8 +1179,6 @@ def display_jd_details(key):
         return
 
     st.markdown(f"### JD Details: **{jd_data.get('title', 'N/A')}**")
-    
-    # Only display the Structured Summary section (removed tab structure)
     
     st.markdown("#### Structured Summary")
     st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
@@ -1274,7 +1196,6 @@ def display_jd_details(key):
     if st.button("⬅️ Hide Details", key="hide_jd_details"):
         st.session_state.selected_jd_key = None
         st.rerun()
-## 🎯 END MODIFIED FUNCTION ##
 
 def jd_management_tab():
     st.header("Job Description (JD) Management")
@@ -1374,24 +1295,18 @@ def jd_management_tab():
     st.markdown("---")
     st.markdown("#### 3. Saved Job Descriptions")
     
-    # --- START REPLACEMENT LOGIC (REMOVED TABLE) ---
     if st.session_state.managed_jds:
-        # Separate valid JDs from error strings
         jd_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)]
         error_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, str)]
         
-        # Display the clear button
         st.button("🗑️ Clear All JDs", key="clear_all_jds", on_click=clear_all_jds)
 
         if st.session_state.get('selected_jd_key'):
-            # If a JD is selected, display its details
             display_jd_details(st.session_state.selected_jd_key)
         else:
             if jd_keys:
                 st.markdown("##### Select a JD to View Details:")
                 
-                # Use columns to display JD titles and the View button
-                # Calculate max columns for layout (e.g., max 3 per row)
                 max_cols = 3 
                 cols = st.columns(max_cols) 
 
@@ -1399,11 +1314,9 @@ def jd_management_tab():
                     jd_data = st.session_state.managed_jds[key]
                     title = jd_data.get('title', 'N/A')
                     
-                    # Display the entry in the current column
                     with cols[i % max_cols]:
                         with st.container(border=True):
                             st.markdown(f"**{i+1}. {title}**")
-                            # Extract 2 key skills for a quick preview
                             skills_preview = ', '.join(jd_data.get('required_skills', ['No skills listed'])[:2])
                             if len(jd_data.get('required_skills', [])) > 2:
                                 skills_preview += '...'
@@ -1423,19 +1336,170 @@ def jd_management_tab():
                 
     else:
         st.info("No JDs saved yet. Add one above to enable batch matching.")
-    # --- END REPLACEMENT LOGIC ---
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT (EMPTY AS REQUESTED)
+# BATCH JD MATCH TAB CONTENT (RESTORED)
 # -------------------------
 
 def batch_jd_match_tab():
-    # --- All content and logic removed to fulfill the user request ---
-    st.header("Batch JD Match: Feature Removed")
-    st.warning("This feature was requested to be removed from the dashboard.")
-    st.info("Please use the other tabs for CV/JD management.")
-    # --- End of removal ---
+    st.header("🏆 Batch JD Match")
+    st.caption("Select your CV and the JDs you want to match against to generate a consolidated fitment report.")
+
+    cv_keys = [k for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict) and v.get('name')]
+    jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
+    
+    st.markdown("#### 1. Select CV and JDs")
+
+    # --- CV Selection ---
+    if not cv_keys:
+        st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management' tabs.")
+        selected_cv = None
+        cv_data = None
+    else:
+        # Use the currently selected resume name if available, otherwise default to the first
+        default_cv_index = cv_keys.index(st.session_state.current_resume_name) if st.session_state.current_resume_name in cv_keys else 0
+        
+        cv_options = {k: st.session_state.managed_cvs[k].get('name', k) for k in cv_keys}
+        
+        selected_cv_key = st.selectbox(
+            "Select Candidate CV",
+            options=list(cv_options.keys()),
+            format_func=lambda k: cv_options[k],
+            index=default_cv_index,
+            key="batch_cv_selector"
+        )
+        selected_cv = selected_cv_key
+        cv_data = st.session_state.managed_cvs.get(selected_cv_key)
+        st.info(f"CV Selected: **{cv_data.get('name', 'N/A')}**")
+        
+    st.markdown("---")
+
+    # --- JD Selection ---
+    if not jd_keys_valid:
+        st.warning("⚠️ **No valid JDs available.** Please add JDs in the 'JD Management' tab.")
+        selected_jds = []
+    else:
+        jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
+        
+        selected_jds = st.multiselect(
+            "Select Job Descriptions to Match Against",
+            options=list(jd_options.keys()),
+            format_func=lambda k: jd_options[k],
+            default=st.session_state.get('selected_jds_for_match', []),
+            key="batch_jd_multiselect"
+        )
+        # Persist the selection
+        st.session_state.selected_jds_for_match = selected_jds
+
+    st.markdown("---")
+
+    # --- Match Button ---
+    match_button = st.button(
+        "🚀 Run Match Analysis", 
+        type="primary", 
+        use_container_width=True, 
+        disabled=not (selected_cv and selected_jds)
+    )
+
+    # --- Core Logic Execution ---
+    if match_button:
+        if not cv_data or isinstance(cv_data, str):
+            st.error("Cannot run match: The selected CV data is corrupted or missing.")
+            return
+
+        match_results = []
+        with st.spinner(f"Analyzing {len(selected_jds)} JD(s) against {cv_data.get('name', 'CV')}..."):
+            for jd_key in selected_jds:
+                jd_data = st.session_state.managed_jds.get(jd_key)
+                if jd_data and isinstance(jd_data, dict):
+                    result = mock_jd_match(cv_data, jd_data)
+                    result['jd_key'] = jd_key
+                    result['jd_title'] = jd_data.get('title', jd_key)
+                    match_results.append(result)
+                else:
+                    st.warning(f"Skipped JD **{jd_key}** due to corrupted data.")
+        
+        # Sort results by score (highest first)
+        match_results.sort(key=lambda x: x['score_100'], reverse=True)
+        st.session_state.candidate_results = match_results
+        st.success("Analysis Complete! Check the report below.")
+    
+    st.markdown("---")
+
+    # --- 2. Results Display ---
+    st.markdown("#### 2. Match Report")
+    
+    if st.session_state.get('candidate_results'):
+        results = st.session_state.candidate_results
+        
+        # Create DataFrame for the main table display
+        df = pd.DataFrame([
+            {
+                "Job Title": r['jd_title'],
+                "Overall Fit (%)": r['score_100'],
+                "Skills Match (%)": r['skills_percent'],
+                "Experience Match (%)": r['experience_percent'],
+                "Education Match (%)": r['education_percent']
+            }
+            for r in results
+        ]).set_index("Job Title")
+
+        st.dataframe(
+            df.style.background_gradient(cmap='Greens', subset=['Overall Fit (%)', 'Skills Match (%)', 'Experience Match (%)', 'Education Match (%)']),
+            use_container_width=True,
+            column_config={
+                "Overall Fit (%)": st.column_config.ProgressColumn(
+                    "Overall Fit (%)",
+                    format="%d%%",
+                    min_value=0,
+                    max_value=100,
+                )
+            }
+        )
+
+        st.markdown("##### Detailed Reports")
+        for i, result in enumerate(results):
+            jd_key = result['jd_key']
+            jd_data = st.session_state.managed_jds.get(jd_key, {})
+
+            with st.expander(f"Report {i+1}: **{result['jd_title']}** (Score: {result['score_100']}%)"):
+                st.markdown(f"**Match Summary:** {result['summary']}")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Skills Match", f"{result['skills_percent']}%", help="Weighted 50% of the overall score.")
+                col2.metric("Experience Match", f"{result['experience_percent']}%", help="Weighted 35% of the overall score.")
+                col3.metric("Education Match", f"{result['education_percent']}%", help="Weighted 15% of the overall score.")
+                
+                st.markdown("###### Skill Overlap Details")
+                
+                required_skills = set(jd_data.get('required_skills', []))
+                common_skills = set(result.get('common_skills', []))
+                missing_skills = required_skills - common_skills
+
+                st.markdown(f"**Total Required Skills:** {len(required_skills)}")
+                st.markdown(f"**Found Skills:** {len(common_skills)}")
+                
+                col_found, col_missing = st.columns(2)
+                
+                with col_found:
+                    with st.container(border=True):
+                        st.markdown("**✅ Found Skills (Matching Requirements):**")
+                        if common_skills:
+                            st.markdown("* " + "\n* ".join(sorted(list(common_skills))))
+                        else:
+                            st.info("No matching skills found in this CV for this JD.")
+
+                with col_missing:
+                    with st.container(border=True):
+                        st.markdown("**❌ Missing Skills (Required by JD):**")
+                        if missing_skills:
+                            st.markdown("* " + "\n* ".join(sorted(list(missing_skills))))
+                        else:
+                            st.success("All required skills found!")
+
+    else:
+        st.info("Run the Match Analysis above to generate the report.")
         
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION
@@ -1458,10 +1522,12 @@ def candidate_dashboard():
 
     # --- Session State Initialization for Candidate ---
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
-    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} # Initialized for JDs
+    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} 
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
-    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None # New state for JD details view
+    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None
+    if "selected_jds_for_match" not in st.session_state: st.session_state.selected_jds_for_match = [] # For batch matching UI persistence
+    if "candidate_results" not in st.session_state: st.session_state.candidate_results = None # To store the match results
     
     # Initialize keys for personal details to ensure stability
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
@@ -1473,7 +1539,7 @@ def candidate_dashboard():
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
 
-    # --- Main Content with New Tabs ---
+    # --- Main Content with Tabs ---
     tab_parsing, tab_management, tab_jd, tab_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management", "🏆 Batch JD Match"])
     
     with tab_parsing:
