@@ -784,7 +784,7 @@ def add_experience_entry(company, role, ctc, project, date_from, date_to, state_
 
 def add_certification_entry(name, title, given_by, received_by, course, date_val, state_key='form_certifications'):
     if not name or not title or not given_by or not course:
-        st.error("Please fill in **Name**, **Title**, **Given By**, and **Course**.")
+        st.error("Please fill in **Name**, **Title**, and **Given By** (Course is optional).")
         return
         
     entry = {
@@ -1321,6 +1321,8 @@ def display_jd_details(key):
     
     if st.button("⬅️ Hide Details", key="hide_jd_details"):
         st.session_state.selected_jd_key = None
+        # Also unset the filter flag if coming from there
+        st.session_state.show_jd_details_from_filter = False
         st.rerun()
 
 def jd_management_tab():
@@ -1427,7 +1429,10 @@ def jd_management_tab():
         
         st.button("🗑️ Clear All JDs", key="clear_all_jds", on_click=clear_all_jds)
 
-        if st.session_state.get('selected_jd_key'):
+        # Only show details if selected_jd_key is set AND we are NOT coming from the filter tab's detail view
+        # This prevents the filter tab from showing multiple detail views simultaneously.
+        is_showing_details_from_filter = st.session_state.get('show_jd_details_from_filter', False)
+        if st.session_state.get('selected_jd_key') and not is_showing_details_from_filter:
             display_jd_details(st.session_state.selected_jd_key)
         else:
             if jd_keys:
@@ -1451,6 +1456,7 @@ def jd_management_tab():
 
                             if st.button("👁️ View Details", key=f"view_jd_btn_{key}", use_container_width=True):
                                 st.session_state.selected_jd_key = key
+                                st.session_state.show_jd_details_from_filter = False # Ensure filter flag is off
                                 st.rerun()
             
             if error_keys:
@@ -1624,7 +1630,7 @@ def batch_jd_match_tab():
         st.info("Run the Match Analysis above to generate the report.")
 
 # -------------------------
-# NEW: FILTER JD TAB CONTENT
+# NEW: FILTER JD TAB CONTENT (UPDATED)
 # -------------------------
 
 def filter_jd_tab():
@@ -1656,13 +1662,15 @@ def filter_jd_tab():
         
         col_job_type, col_role = st.columns(2)
         with col_job_type:
-            filter_job_type = st.multiselect(
-                "Select Job Type(s)",
-                options=['Full-time', 'Internship', 'Part-time', 'Hybrid', 'Remote', 'Contract/Temp'],
-                key="filter_job_type",
-                default=st.session_state.get('filter_job_type_default', [])
+            # --- UPDATED: Use st.selectbox for single selection with 'All Job Types' ---
+            JOB_TYPE_OPTIONS = ['All Job Types', 'Full-time', 'Internship', 'Part-time', 'Hybrid', 'Remote', 'Contract/Temp']
+            filter_job_type = st.selectbox(
+                "Select Job Type",
+                options=JOB_TYPE_OPTIONS,
+                index=0, # Default to 'All Job Types'
+                key="filter_job_type"
             )
-            st.session_state.filter_job_type_default = filter_job_type # Store selection for persistence
+            # --- END UPDATED ---
             
         with col_role:
             filter_role_input = st.text_input(
@@ -1682,9 +1690,12 @@ def filter_jd_tab():
         search_skills = {s.strip().lower() for s in filter_skills_input.split(',') if s.strip()}
         search_roles = {r.strip().lower() for r in filter_role_input.split(',') if r.strip()}
         
-        if not (search_skills or filter_job_type or search_roles):
-            st.warning("Please enter or select at least one filter criterion to apply.")
+        if not (search_skills or (filter_job_type != 'All Job Types') or search_roles):
+            st.warning("Please enter or select at least one filter criterion (excluding 'All Job Types') to apply.")
             st.session_state.filtered_jds = []
+            # Reset detail view if no filters applied
+            st.session_state.show_jd_details_from_filter = False
+            st.session_state.selected_jd_key = None
             st.rerun()
 
         matched_jds = []
@@ -1707,33 +1718,34 @@ def filter_jd_tab():
                     skills_match_count = len(common_skills)
                     if skills_match_count < filter_min_skills:
                         continue # Failed skills filter
-
-                # --- Job Type Filter Logic (Uses a simple keyword search in raw text) ---
+                elif filter_skills_input: # If skills input is present but fails min match
+                     if filter_min_skills > 0:
+                        continue
+                
+                # --- Job Type Filter Logic ---
                 job_type_match = False
-                if filter_job_type:
-                    # Determine the JD's job type (Mocked logic, same as in mock_jd_match)
-                    jd_type_mock = "Full-time"
-                    if 'internship' in jd_raw_text_lower:
-                        jd_type_mock = "Internship"
-                    elif 'part-time' in jd_raw_text_lower:
-                        jd_type_mock = "Part-time"
-                    elif 'hybrid' in jd_raw_text_lower or ('mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower):
-                        jd_type_mock = "Hybrid"
-                    elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
-                        jd_type_mock = "Remote"
-                    elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
-                        jd_type_mock = "Contract/Temp"
+                # Determine the JD's job type (Mocked logic, same as in mock_jd_match)
+                jd_type_mock = "Full-time"
+                if 'internship' in jd_raw_text_lower:
+                    jd_type_mock = "Internship"
+                elif 'part-time' in jd_raw_text_lower:
+                    jd_type_mock = "Part-time"
+                elif 'hybrid' in jd_raw_text_lower or ('mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower):
+                    jd_type_mock = "Hybrid"
+                elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
+                    jd_type_mock = "Remote"
+                elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
+                    jd_type_mock = "Contract/Temp"
 
-                    if jd_type_mock in filter_job_type:
-                        job_type_match = True
-                    else:
-                        continue # Failed job type filter
+                if filter_job_type == 'All Job Types' or jd_type_mock == filter_job_type:
+                    job_type_match = True
                 else:
-                    job_type_match = True # Pass if no job type selected
+                    continue # Failed job type filter
 
                 # --- Role Filter Logic (Search in Title) ---
                 role_match = False
                 if search_roles:
+                    # Check if any part of the JD title contains the role keyword(s)
                     if any(role in jd_title_lower for role in search_roles):
                         role_match = True
                     else:
@@ -1742,7 +1754,7 @@ def filter_jd_tab():
                     role_match = True # Pass if no role entered
 
                 # If all filters passed, add to matches
-                if skills_match_count >= filter_min_skills and job_type_match and role_match:
+                if job_type_match and role_match:
                     matched_jds.append({
                         "JD Key": jd_key,
                         "Title": jd_data.get('title', jd_key),
@@ -1752,6 +1764,8 @@ def filter_jd_tab():
                     })
         
         st.session_state.filtered_jds = matched_jds
+        st.session_state.show_jd_details_from_filter = False # Hide details after running new filter
+        st.session_state.selected_jd_key = None
         st.success(f"Filter complete: Found **{len(matched_jds)}** matching Job Descriptions.")
         
         # Sort by skills match count (descending)
@@ -1769,28 +1783,32 @@ def filter_jd_tab():
         )
 
         st.markdown("---")
-        st.markdown("##### View Details")
         
-        # Display buttons to view individual JD details
-        jd_keys = results_df['JD Key'].tolist()
+        # --- Display Buttons for Details ---
         
-        max_cols = 3 
-        cols = st.columns(max_cols) 
-
-        for i, key in enumerate(jd_keys):
-            jd_data = st.session_state.managed_jds[key]
-            title = jd_data.get('title', 'N/A')
-            
-            with cols[i % max_cols]:
-                with st.container(border=True):
-                    st.markdown(f"**{i+1}. {title}**")
-                    if st.button("👁️ View JD Details", key=f"view_filtered_jd_btn_{key}", use_container_width=True):
-                        st.session_state.selected_jd_key = key
-                        st.session_state.show_jd_details_from_filter = True # Flag to show single JD view
-                        st.rerun()
-                        
-        if st.session_state.get('show_jd_details_from_filter'):
+        if st.session_state.get('show_jd_details_from_filter') and st.session_state.get('selected_jd_key'):
+             # Show the selected JD details if the flag is set
+            st.markdown("##### Selected Job Description Details:")
             display_jd_details(st.session_state.selected_jd_key)
+        else:
+            # Show buttons to view details for the filtered list
+            st.markdown("##### View Details for Matched JDs:")
+            jd_keys = results_df['JD Key'].tolist()
+            
+            max_cols = 3 
+            cols = st.columns(max_cols) 
+
+            for i, key in enumerate(jd_keys):
+                jd_data = st.session_state.managed_jds[key]
+                title = jd_data.get('title', 'N/A')
+                
+                with cols[i % max_cols]:
+                    with st.container(border=True):
+                        st.markdown(f"**{i+1}. {title}**")
+                        if st.button("👁️ View JD Details", key=f"view_filtered_jd_btn_{key}", use_container_width=True):
+                            st.session_state.selected_jd_key = key
+                            st.session_state.show_jd_details_from_filter = True # Flag to show single JD view
+                            st.rerun()
             
     elif not apply_button:
         st.info("Set your filters and click 'Apply Filters' to see matched JDs.")
