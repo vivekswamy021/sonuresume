@@ -1358,132 +1358,15 @@ def jd_management_tab():
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT (MODIFIED)
+# BATCH JD MATCH TAB CONTENT (EMPTY AS REQUESTED)
 # -------------------------
 
 def batch_jd_match_tab():
-    st.header("Batch JD Match: Best Matches 🎯")
-    st.caption("Compare your **current structured CV** against multiple saved job descriptions to find the best fit.")
-
-    st.markdown("---")
-
-    # 1. Check for Active CV
-    current_cv_name = st.session_state.get('current_resume_name')
-    
-    if not current_cv_name or current_cv_name not in st.session_state.managed_cvs:
-        st.warning("⚠️ **No Active CV Detected.** Please parse a resume or save a CV using the 'Resume Parsing' or 'CV Management' tabs before matching.")
-        return
-    
-    cv_data = st.session_state.managed_cvs[current_cv_name]
-    
-    # Validate CV data type (Critical check for 'str' object error)
-    if not isinstance(cv_data, dict):
-        st.error(f"❌ **Error: Current CV data is corrupted** (it's a string, not a dictionary). Please re-parse/re-save the CV '{current_cv_name}'.")
-        st.code(str(cv_data), language="text")
-        return # STOP execution if data is corrupted
-        
-    st.success(f"Matching CV: **{cv_data.get('name', current_cv_name)}**")
-    
-    # 2. Check for Saved JDs
-    available_jd_keys = list(st.session_state.managed_jds.keys())
-
-    if not available_jd_keys:
-        st.info("No job descriptions found. Please use the **JD Management** tab to add JDs first.")
-        return
-
-    st.markdown("#### Select Job Descriptions to Match Against")
-
-    # Filter out corrupted JDs for selection display
-    valid_jds = {
-        key: st.session_state.managed_jds[key] 
-        for key in available_jd_keys 
-        if isinstance(st.session_state.managed_jds[key], dict)
-    }
-    
-    if not valid_jds:
-        st.error("No valid, structured Job Descriptions are available for matching.")
-        return
-
-    jd_titles = [valid_jds[key].get('title', key) for key in valid_jds.keys()]
-    
-    selected_jd_titles = st.multiselect(
-        "Choose the JDs you want to match against (Select at least one):",
-        options=jd_titles,
-        key="selected_jds_for_match",
-        default=jd_titles
-    )
-
-    # Map selected titles back to their keys
-    selected_jd_keys = [key for key, title in zip(valid_jds.keys(), jd_titles) if title in selected_jd_titles]
-
-    st.markdown("---")
-
-    if st.button("🚀 Compare CV and Rank Matches", type="primary", use_container_width=True):
-        if not selected_jd_keys:
-            st.error("Please select at least one valid Job Description to run the batch match.")
-            return
-
-        st.info(f"Analyzing **{cv_data.get('name', current_cv_name)}** against {len(selected_jd_keys)} Job Descriptions...")
-        
-        # --- Actual Batch Matching Execution (Mocked) ---
-        match_results = []
-        for jd_key in selected_jd_keys:
-            jd_data = st.session_state.managed_jds[jd_key]
-            
-            # Ensure JD data is a dictionary
-            if not isinstance(jd_data, dict):
-                st.warning(f"Skipping JD '{jd_key}' due to corrupted/non-dictionary data.")
-                continue
-                
-            # Run the mock matching function to get detailed scores
-            match_data = mock_jd_match(cv_data, jd_data)
-            
-            # This data is gathered but will not be displayed in this modified version
-            title_display = jd_data.get('title', jd_key)
-            jd_role = title_display 
-            jd_file_name = jd_key.replace('_', '-').replace("Pasted-JD-", "").replace("-", "_") + ".pdf"
-
-            match_results.append({
-                "Rank": 0, # Placeholder, set after sorting
-                "Job Description (Ranked)": jd_file_name,
-                "Role": jd_role,
-                "Job Type": "Full-time", # Mocked value
-                "Fit Score (out of 10)": match_data['score_10'], 
-                "Skills (%)": match_data['skills_percent'],
-                "Experience (%)": match_data['experience_percent'],
-                "Education (%)": match_data['education_percent'],
-                "Summary": match_data['summary'],
-                "JD Key": jd_key,
-                "Sortable Score": match_data['score_100']
-            })
-            
-        if not match_results:
-             st.warning("No valid match results were generated. Ensure all selected JDs were successfully parsed.")
-             return
-             
-        # Sort results by score descending and assign rank (logic kept for data integrity)
-        match_results.sort(key=lambda x: x['Sortable Score'], reverse=True)
-        for i, res in enumerate(match_results):
-            res['Rank'] = i + 1
-
-        # --- MODIFIED SECTION: Only display the success message ---
-        
-        # Get the top score for a brief summary
-        top_match = match_results[0]
-        
-        st.success(f"✅ Batch Matching Complete! You were compared against {len(selected_jd_keys)} JDs.")
-        
-        st.markdown("### Top Match Summary")
-        st.info(
-            f"Your highest match is **Rank {top_match['Rank']}** for the role **{top_match['Role']}** "
-            f"with a **Fit Score of {top_match['Fit Score (out of 10)']}/10**."
-        )
-        
-        # --- END MODIFIED SECTION ---
-
-        # NOTE: The table display and detailed reports section have been entirely removed below this point
-        # to fulfill the user request.
-        
+    # --- All content and logic removed to fulfill the user request ---
+    st.header("Batch JD Match: Feature Removed")
+    st.warning("This feature was requested to be removed from the dashboard.")
+    st.info("Please use the other tabs for CV/JD management.")
+    # --- End of removal ---
         
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION
