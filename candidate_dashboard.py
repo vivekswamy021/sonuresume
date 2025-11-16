@@ -1292,6 +1292,7 @@ def clear_all_jds():
     """Callback to clear all JDs."""
     st.session_state.managed_jds = {}
     st.session_state.selected_jd_key = None
+    st.session_state.selected_jds_for_match = [] # Clear batch selection on JD clear
     st.toast("All saved JDs cleared!")
 
 # Modified function: REMOVED RAW TEXT TAB/DISPLAY
@@ -1520,11 +1521,18 @@ def batch_jd_match_tab():
     else:
         jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
         
+        # FIX: Validate and clean the default selection list against available JD keys
+        default_selected_jds = st.session_state.get('selected_jds_for_match', [])
+        cleaned_default_jds = [
+            key for key in default_selected_jds 
+            if key in jd_options.keys()
+        ]
+        
         selected_jds = st.multiselect(
             "Select Job Descriptions to Match Against",
             options=list(jd_options.keys()),
             format_func=lambda k: jd_options[k],
-            default=st.session_state.get('selected_jds_for_match', []),
+            default=cleaned_default_jds, # Use the cleaned list as default
             key="batch_jd_multiselect"
         )
         st.session_state.selected_jds_for_match = selected_jds
