@@ -1748,11 +1748,25 @@ def cover_letter_tab():
         st.error("⚠️ GROQ_API_KEY is missing. Cover Letter generation is disabled.")
         return
 
-    cv_keys_valid = {k: v.get('name', k) for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict)}
+    # --- FILTER CVs: ONLY show CVs from the Resume Parsing tab ('Parsing_Upload') ---
+    
+    cv_keys_all_items = st.session_state.managed_cvs.items()
+    
+    parsing_cv_items = [
+        (k, v) for k, v in cv_keys_all_items
+        if isinstance(v, dict) and v.get('source_type') == 'Parsing_Upload'
+    ]
+    
+    cv_keys_valid = {k: v.get('name', k) for k, v in parsing_cv_items}
+    # ---------------------------------------------------------------------------------
+
     jd_keys_valid = {k: v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)}
 
     if not cv_keys_valid or not jd_keys_valid:
-        st.warning("Please ensure you have at least **one valid CV** and **one valid JD** saved in their respective tabs to use this feature.")
+        if not cv_keys_valid:
+            st.warning("Please upload or paste a CV in the **'Resume Parsing'** tab to use this feature.")
+        if not jd_keys_valid:
+            st.warning("Please add JDs in the **'JD Management'** tab to use this feature.")
         return
         
     st.markdown("---")
@@ -1760,7 +1774,7 @@ def cover_letter_tab():
     col_cv, col_jd = st.columns(2)
     with col_cv:
         selected_cv_key = st.selectbox(
-            "Select Candidate CV",
+            "Select Candidate CV (Source: Resume Parsing Tab Only)",
             options=list(cv_keys_valid.keys()),
             format_func=lambda k: cv_keys_valid[k],
             key="cl_cv_select"
