@@ -1329,7 +1329,11 @@ def jd_management_tab():
     st.header("Job Description (JD) Management")
     st.caption("Upload or paste job descriptions. They will be parsed and saved for matching against your CV.")
     
-    st.markdown("#### 1. Select JD Type")
+    if not GROQ_API_KEY:
+        st.error("⚠️ GROQ_API_KEY is missing. JD Parsing is disabled. Please set the API key.")
+        return
+        
+    st.markdown("#### 1. Select JD Type (For Categorization)")
     jd_type = st.radio(
         "Choose JD scope:",
         ["Single JD", "Multiple JD"],
@@ -1344,7 +1348,7 @@ def jd_management_tab():
     
     jd_method = st.radio(
         "Choose Method:",
-        ["Upload File", "Paste Text", "LinkedIn URL"],
+        ["Upload File", "Paste Text"], # Removed LinkedIn URL option
         index=0,
         horizontal=True,
         key="jd_method_select"
@@ -1352,6 +1356,8 @@ def jd_management_tab():
 
     st.markdown("---")
     
+    # --- File Uploader ---
+    uploaded_jds = None
     if jd_method == "Upload File":
         st.markdown("##### Upload JD File(s)")
         
@@ -1363,25 +1369,9 @@ def jd_management_tab():
         )
         st.caption("Limit 200MB per file • PDF, TXT, DOCX")
         
-        if st.button("Add JD(s)", type="primary", use_container_width=True, key="upload_jd_button"):
-            if uploaded_jds:
-                files_to_process = uploaded_jds if isinstance(uploaded_jds, list) else [uploaded_jds]
-                
-                with st.spinner(f"Processing {len(files_to_process)} JD file(s)..."):
-                    results = [process_jd_file(f, jd_type) for f in files_to_process]
-                
-                success_count = sum(r[0] for r in results)
-                st.success(f"✅ Finished processing: {success_count} success(es).")
-                for success, message in results:
-                    if success:
-                        st.text(message)
-                    else:
-                        st.error(message)
-
-            else:
-                st.warning("Please upload at least one JD file.")
-        
-    elif jd_method == "Paste Text":
+    # --- Text Paster ---
+    pasted_jd_text = ""
+    if jd_method == "Paste Text":
         st.markdown("##### Paste JD Text")
         
         pasted_jd_text = st.text_area(
@@ -1389,41 +1379,45 @@ def jd_management_tab():
             height=300,
             key="jd_paster"
         )
-        
-        if st.button("Add JD", type="primary", use_container_width=True, key="paste_jd_button"):
-            if pasted_jd_text.strip():
-                with st.spinner("Processing pasted JD text..."):
-                    success, message = process_jd_text(pasted_jd_text.strip())
-                
+    
+    st.markdown("---")
+    
+    # --- New Combined Parse and Load Button ---
+    if GROQ_API_KEY:
+        parse_load_button = st.button(
+            "✨ Parse and Load JD", 
+            type="primary", 
+            use_container_width=True, 
+            key="parse_load_jd_button"
+        )
+    else:
+        parse_load_button = False
+    
+    if parse_load_button:
+        if uploaded_jds:
+            files_to_process = uploaded_jds if isinstance(uploaded_jds, list) else [uploaded_jds]
+            
+            with st.spinner(f"Processing {len(files_to_process)} JD file(s)..."):
+                results = [process_jd_file(f, jd_type) for f in files_to_process]
+            
+            success_count = sum(r[0] for r in results)
+            st.success(f"✅ Finished processing: {success_count} success(es).")
+            for success, message in results:
                 if success:
-                    st.success(message)
+                    st.text(message)
                 else:
                     st.error(message)
-            else:
-                st.warning("Please paste the JD text.")
 
-    elif jd_method == "LinkedIn URL":
-        st.markdown("##### Enter LinkedIn URL (Requires Web Scraping)")
-        
-        linkedin_url = st.text_input(
-            "Enter the full LinkedIn Job URL:",
-            key="jd_linkedin_url",
-            placeholder="https://www.linkedin.com/jobs/view/..."
-        )
-        
-        if st.button("Fetch and Add JD (Mock)", type="primary", use_container_width=True, key="url_jd_button"):
-            if linkedin_url.strip():
-                if "linkedin.com/jobs/view" in linkedin_url:
-                    st.info(f"Web scraping is not implemented in this demo. Please use the **Upload File** or **Paste Text** methods for a functional test.")
-                else:
-                    st.error("Please enter a valid LinkedIn Job URL.")
+        elif pasted_jd_text.strip():
+            with st.spinner("Processing pasted JD text..."):
+                success, message = process_jd_text(pasted_jd_text.strip())
+            
+            if success:
+                st.success(message)
             else:
-                st.warning("Please enter a LinkedIn Job URL.")
-
-    # --- REMOVED SECTION 3: Saved Job Descriptions ---
-    # st.markdown("---")
-    # st.markdown("#### 3. Saved Job Descriptions")
-    # ... (rest of the display logic removed)
+                st.error(message)
+        else:
+            st.warning("Please upload file(s) or paste text content to proceed.")
 
 # -------------------------
 # BATCH JD MATCH TAB CONTENT (UPDATED CV SELECTION & REPORT TABLE)
