@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import pdfplumber
 import docx
-import openpyxl # Included for general file utility, though primarily handling PDF/DOCX/TXT
+import openpyxl
 import json
 import tempfile
 from groq import Groq
@@ -36,6 +36,50 @@ if not GROQ_API_KEY:
 else:
     client = Groq(api_key=GROQ_API_KEY)
 
+# -------------------------
+# MOCK DATA (JD Management) 
+# -------------------------
+
+MOCK_JDS = {
+    "Senior_Python_Developer": {
+        "title": "Senior Python Developer",
+        "required_skills": ["Python", "Django", "Flask", "PostgreSQL", "AWS", "CI/CD", "REST APIs"],
+        "responsibilities": ["Design and implement scalable Python services.", "Lead code reviews and mentorship.", "Optimize database queries and system performance."],
+        "qualifications": ["B.Tech/M.Tech in Computer Science", "5+ years of Python experience"],
+        "experience_level": "Senior",
+        "raw_text": "We are seeking a senior Python developer to join our backend team. You will be responsible for building high-performance APIs using Django and Flask, and managing our PostgreSQL databases on AWS. Must have extensive experience in full-stack development and strong leadership skills.",
+        "source": "Mock JD List"
+    },
+    "Junior_Data_Analyst_Remote": {
+        "title": "Junior Data Analyst (Remote)",
+        "required_skills": ["SQL", "Pandas", "Excel", "Data Visualization", "Communication"],
+        "responsibilities": ["Perform ad-hoc analysis on business data.", "Create weekly reports and dashboards.", "Support senior analysts with data cleaning tasks."],
+        "qualifications": ["Bachelor's degree in a quantitative field"],
+        "experience_level": "Entry-level",
+        "raw_text": "A great entry-level opportunity for a remote data analyst. Requires proficiency in SQL for querying large datasets and excellent Excel skills. Must be a self-starter and possess strong communication.",
+        "source": "Mock JD List"
+    },
+    "Marketing_Internship": {
+        "title": "Marketing & Social Media Internship",
+        "required_skills": ["Social Media Management", "Content Creation", "SEO Basics", "Time Management"],
+        "responsibilities": ["Assist with campaign rollouts.", "Manage daily social media calendar.", "Analyze campaign performance metrics."],
+        "qualifications": ["Currently pursuing a Marketing or Communications degree"],
+        "experience_level": "Internship",
+        "raw_text": "This is a 6-month marketing internship focused on digital content and social media. Ideal for students seeking hands-on experience in content creation and SEO. Must be available for hybrid work setup.",
+        "source": "Mock JD List"
+    },
+    "Cloud_Architect": {
+        "title": "Principal Cloud Architect",
+        "required_skills": ["AWS", "Azure", "Terraform", "Kubernetes", "DevOps", "Security Architecture"],
+        "responsibilities": ["Define cloud strategy and standards.", "Lead migration projects to cloud infrastructure.", "Ensure compliance with security best practices."],
+        "qualifications": ["AWS Certified Solutions Architect - Professional", "10+ years of IT experience"],
+        "experience_level": "Expert",
+        "raw_text": "Seeking a Principal Cloud Architect to lead our infrastructure team. Deep expertise in AWS, Azure, and infrastructure-as-code tools like Terraform is mandatory. This is a high-impact senior role.",
+        "source": "Mock JD List"
+    }
+}
+
+
 # --- Utility Functions ---
 
 def go_to(page_name):
@@ -45,7 +89,7 @@ def go_to(page_name):
 def get_file_type(file_name):
     """Identifies the file type based on its extension."""
     ext = os.path.splitext(file_name)[1].lower().strip('.')
-    # Handling specific file types
+    # Handling specific non-traditional resume file types
     if ext == 'pdf': return 'pdf'
     elif ext == 'docx': return 'docx'
     elif ext == 'json': return 'json'
@@ -162,93 +206,7 @@ def parse_cv_with_llm(text):
 
     return parsed
 
-# --- JD PARSING FUNCTION (FIXED FOR ROBUSTNESS) ---
-@st.cache_data(show_spinner="Analyzing JD content with Groq LLM...")
-def parse_jd_with_llm(text):
-    """Sends JD text to the LLM for structured information extraction."""
-    # 1. Immediate error handling
-    if text.startswith("Error") or not GROQ_API_KEY:
-        return {"error": "Parsing error or API key missing or file content extraction failed.", "raw_text": text}
-
-    # 2. LLM Prompt
-    prompt = f"""Extract the following information from the Job Description in structured JSON format.
-    - Title (Job Title), - Company, - Location, - Required_Skills (List of mandatory skills), 
-    - Qualifications (List of required degrees/certifications), - Experience_Level (e.g., 'Entry', 'Mid-level', 'Senior'),
-    - Responsibilities (List of 3-5 key duties), - Benefits (List of 2-3 key benefits, if mentioned)
-    
-    The output must contain the key **'raw_text'** with the *entire original text* of the JD.
-    
-    Job Description Text: {text}
-    
-    Provide the output strictly as a JSON object, without any surrounding markdown or commentary.
-    """
-    content = ""
-    parsed = {}
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
-        )
-        content = response.choices[0].message.content.strip()
-        
-        # 3. Robustly isolate and load JSON object
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0).strip()
-            json_str = json_str.replace('```json', '').replace('```', '').strip() 
-            parsed = json.loads(json_str)
-        else:
-            raise json.JSONDecodeError("Could not isolate a valid JSON structure.", content, 0)
-
-    except Exception as e:
-        parsed = {"error": f"LLM parsing error: {e}", "raw_text": text}
-        return parsed # Return immediately on critical error
-
-    # 4. Post-Parsing Cleanup and Robust Fallbacks (CRITICAL FIX FOR DISPLAY)
-    
-    # Ensure raw_text is included
-    parsed['raw_text'] = text
-    
-    # Define all expected fields and ensure they are present with 'N/A' or []
-    expected_fields = {
-        'title': 'N/A', 
-        'company': 'N/A', 
-        'location': 'N/A', 
-        'experience_level': 'N/A', 
-        'required_skills': [], 
-        'qualifications': [], 
-        'responsibilities': [], 
-        'benefits': []
-    }
-
-    for field, default_value in expected_fields.items():
-        current_value = parsed.get(field)
-        
-        if field in ['required_skills', 'qualifications', 'responsibilities', 'benefits']:
-            # For lists, ensure it is a list, and clean up 'N/A' strings
-            if not isinstance(current_value, list):
-                 # Simple fallback: if it's a non-empty string, try to split it
-                 if isinstance(current_value, str) and current_value.lower().strip() not in ['n/a', 'none', '']:
-                      parsed[field] = [s.strip() for s in re.split(r'[,\n•*-]', current_value) if s.strip() and s.strip().lower() != 'n/a']
-                 else:
-                      parsed[field] = []
-            else:
-                 # Clean the list of any 'N/A' or empty strings the LLM might have inserted
-                 parsed[field] = [str(item).strip() for item in current_value if item and str(item).strip() and str(item).strip().lower() != 'n/a']
-
-        else:
-            # For strings, ensure it's a string, and not empty or N/A
-            if not current_value or (isinstance(current_value, str) and current_value.lower().strip() in ['n/a', 'none', '']):
-                parsed[field] = default_value
-            elif isinstance(current_value, str):
-                 parsed[field] = current_value.strip() # Ensure clean string
-
-    return parsed
-# --- END JD PARSING FIX ---
-
-
-# --- CORE MATCHING LOGIC (Using structured JD data) ---
+# --- CORE MATCHING LOGIC (ENHANCED MOCK FOR DETAILED REPORT) ---
 def mock_jd_match(cv_data, jd_data):
     """
     Compares CV data against JD data using a detailed, weighted mock calculation
@@ -259,8 +217,8 @@ def mock_jd_match(cv_data, jd_data):
     # 1. Prepare Data 
     
     # Robustly process required JD skills
-    jd_skills_raw = jd_data.get('required_skills', ['python', 'sql', 'communication'])
-    if not isinstance(jd_skills_raw, list): jd_skills_raw = ['python', 'sql', 'communication']
+    jd_skills_raw = jd_data.get('required_skills', [])
+    if not isinstance(jd_skills_raw, list): jd_skills_raw = []
     jd_skills = set()
     for s in jd_skills_raw:
         if isinstance(s, str):
@@ -279,20 +237,14 @@ def mock_jd_match(cv_data, jd_data):
              cv_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
 
     # Education/Qualification Preparation
-    # Ensure qualifications is a list before attempting set comprehension
-    jd_qualifications_raw = jd_data.get('qualifications', ['b.tech'])
-    if not isinstance(jd_qualifications_raw, list):
-        jd_qualifications_raw = [str(jd_qualifications_raw)] if jd_qualifications_raw != 'N/A' else ['b.tech']
-        
-    jd_qualifications = {q.lower() for q in jd_qualifications_raw if isinstance(q, str) and q != 'n/a'}
-    
+    jd_qualifications = {q.lower() for q in jd_data.get('qualifications', []) if isinstance(q, str)}
     cv_education = [e.get('degree', '').lower() for e in cv_data.get('education', []) if isinstance(e, dict)]
     cv_certifications = [c.get('name', '').lower() for c in cv_data.get('certifications', []) if isinstance(c, dict)]
     
     # Experience Preparation
     cv_experience_roles = [e.get('role', '').lower() for e in cv_data.get('experience', []) if isinstance(e, dict)]
     cv_total_experience_count = len(cv_data.get('experience', []))
-    jd_title_lower = jd_data.get('title', 'placeholder role').lower()
+    jd_title_lower = jd_data.get('title', '').lower()
     
     # --- 2. Skills Match Calculation ---
     
@@ -331,7 +283,7 @@ def mock_jd_match(cv_data, jd_data):
                  education_strengths.append(f"The candidate holds a certification relevant to the requirement: {jd_qual.title()}.")
                  found = True
 
-            if not found and 'certification' not in jd_qual and 'degree' not in jd_qual and jd_qual not in ['n/a']:
+            if not found and 'certification' not in jd_qual and 'degree' not in jd_qual:
                  education_gaps.append(f"The candidate does not clearly mention a required qualification: {jd_qual.title()}.")
 
         if required_count > 0:
@@ -366,12 +318,10 @@ def mock_jd_match(cv_data, jd_data):
          
     if cv_has_relevant_role:
         exp_score += 40 
-        # Safely get the first role or a placeholder
-        first_role = list(cv_experience_roles)[0].title() if cv_experience_roles else 'Relevant Role'
-        experience_strengths.append(f"The candidate has held a role (e.g., '{first_role}') that is highly relevant to the JD title.")
+        experience_strengths.append(f"The candidate has held a role (e.g., '{list(cv_experience_roles)[0].title()}') that is highly relevant to the JD title.")
         
     required_years = 0
-    if experience_level_jd == 'senior': required_years = 5
+    if experience_level_jd == 'senior' or experience_level_jd == 'expert': required_years = 5
     elif experience_level_jd == 'mid-level': required_years = 2
         
     if cv_total_experience_count >= required_years:
@@ -426,7 +376,7 @@ def mock_jd_match(cv_data, jd_data):
     final_score_100 = int(weighted_score)
     final_score_10 = round(max(1, final_score_100 / 10), 1) 
 
-    # --- Role and Job Type based on JD ---
+    # --- Mock Role and Job Type based on JD ---
     job_role = jd_data.get('title', 'N/A')
     role_type = "Full-time"
     jd_raw_text_lower = jd_data.get('raw_text', '').lower()
@@ -435,7 +385,7 @@ def mock_jd_match(cv_data, jd_data):
         role_type = "Internship"
     elif 'part-time' in jd_raw_text_lower:
         role_type = "Part-time"
-    elif 'hybrid' in jd_raw_text_lower or ('mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower):
+    elif 'hybrid' in jd_raw_text_lower or 'mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower:
         role_type = "Hybrid"
     elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
         role_type = "Remote"
@@ -443,7 +393,7 @@ def mock_jd_match(cv_data, jd_data):
         role_type = "Contract/Temp"
 
 
-    # --- 7. Summary Generation & Final Return ---
+    # --- 7. Summary Generation & Final Return (FIXED for guaranteed keys) ---
     overall_summary = f"The candidate has an **Overall Fit Score of {final_score_10}/10** (Skills: {skills_percent}%, Experience: {experience_percent}%, Education: {education_percent}%). "
     
     if final_score_100 > 80:
@@ -471,7 +421,7 @@ def mock_jd_match(cv_data, jd_data):
 
 
 def format_cv_to_html(cv_data, cv_name):
-    # ... (Content remains unchanged) ...
+    """Formats the structured CV data into a clean HTML string for printing."""
     def list_to_html(items, tag='li'):
         if not items:
             return ""
@@ -514,7 +464,8 @@ def format_cv_to_html(cv_data, cv_name):
         return f"""
         <div class="entry">
             <p><strong>{cert.get('name', 'N/A')}</strong> - {cert.get('title', 'N/A')}</p>
-            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')} | <em>Date:</em> {cert.get('date_received', 'N/A')}</p>
+            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')}</p>
+            <p><em>Date:</em> {cert.get('date_received', 'N/A')}</p>
         </div>
         """
 
@@ -602,7 +553,7 @@ def format_cv_to_html(cv_data, cv_name):
     return html_content.strip()
 
 def format_cv_to_markdown(cv_data, cv_name):
-    # ... (Content remains unchanged) ...
+    """Formats the structured CV data into a viewable Markdown string."""
     md = f"""
 # {cv_data.get('name', cv_name)}
 ### Contact & Links
@@ -760,160 +711,6 @@ def generate_and_display_cv(cv_name):
             key=f"download_html_btn_{cv_name}"
         )
 
-# --- JD Management Utility Functions ---
-
-def process_jd_file(uploaded_files):
-    """Processes uploaded JD files, extracts text, and parses them."""
-    if not uploaded_files:
-        st.warning("Please upload one or more JD files.")
-        return
-
-    if not GROQ_API_KEY:
-        st.error("GROQ_API_KEY is missing. AI JD Parsing is disabled.")
-        return
-        
-    for uploaded_file in uploaded_files:
-        file_name = uploaded_file.name
-        file_bytes = uploaded_file.getvalue()
-        file_type = get_file_type(file_name)
-        
-        with st.spinner(f"Extracting text from JD: {file_name}..."):
-            extracted_text = extract_content(file_type, file_bytes, file_name)
-            
-        if extracted_text.startswith("Error") or not extracted_text:
-            st.error(f"JD Text Extraction Failed for {file_name}: {extracted_text}")
-            continue
-
-        with st.spinner(f"🧠 Parsing JD for {file_name} with Groq LLM..."):
-            parsed_data = parse_jd_with_llm(extracted_text)
-            
-        if "error" in parsed_data:
-            st.error(f"AI Parsing Failed for {file_name}: {parsed_data['error']}")
-            st.code(parsed_data.get('raw_text', 'No raw output available.'), language='text')
-            continue
-            
-        # Use parsed title for key name, falling back to a timestamped generic name
-        jd_title = parsed_data.get('title', 'Unknown_JD').replace(' ', '_').replace('/', '_')
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-        # Ensure the key is unique and descriptive, even if the title is 'N/A'
-        jd_key_name = f"{jd_title}_{timestamp}_{random.randint(100, 999)}"
-        
-        st.session_state.managed_jds[jd_key_name] = parsed_data
-        st.success(f"✅ Successfully added structured JD: **{parsed_data.get('title', file_name)}** at **{parsed_data.get('company', 'N/A')}**")
-        st.rerun() # Rerun to update the display of current JDs
-
-def process_jd_text(pasted_text):
-    """Processes pasted JD text and parses it."""
-    if not pasted_text.strip():
-        st.warning("Please paste the JD text before processing.")
-        return
-        
-    if not GROQ_API_KEY:
-        st.error("GROQ_API_KEY is missing. AI JD Parsing is disabled.")
-        return
-
-    with st.spinner("🧠 Parsing pasted JD text with Groq LLM..."):
-        parsed_data = parse_jd_with_llm(pasted_text)
-        
-    if "error" in parsed_data:
-        st.error(f"AI Parsing Failed: {parsed_data['error']}")
-        st.code(parsed_data.get('raw_text', 'No raw output available.'), language='text')
-        return
-
-    # Use parsed title for key name, falling back to a timestamped generic name
-    jd_title = parsed_data.get('title', 'Pasted_JD').replace(' ', '_').replace('/', '_')
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-    jd_key_name = f"{jd_title}_{timestamp}_{random.randint(100, 999)}"
-    
-    st.session_state.managed_jds[jd_key_name] = parsed_data
-    st.success(f"✅ Successfully added structured JD: **{parsed_data.get('title', 'Pasted Job Description')}** at **{parsed_data.get('company', 'N/A')}**")
-    st.session_state.jd_paster_content = "" # Clear the text area
-    st.rerun() # Rerun to update the display of current JDs
-
-def clear_all_jds():
-    """Clears all managed JDs from session state."""
-    st.session_state.managed_jds = {}
-    st.success("All managed Job Descriptions have been cleared.")
-
-def display_jd_details(jd_key):
-    """Displays the structured data of a single JD in a clean format."""
-    if jd_key not in st.session_state.managed_jds:
-        st.error(f"JD key '{jd_key}' not found.")
-        return
-        
-    jd_data = st.session_state.managed_jds[jd_key]
-    
-    if isinstance(jd_data, str) or "error" in jd_data:
-        st.error(f"Corrupted or Error JD Data: {jd_data.get('error', str(jd_data))}")
-        return
-        
-    # Helper function to display lists robustly
-    def safe_display_list(data, default_message="N/A"):
-        # Check if the data is a list and not empty
-        if isinstance(data, list) and data:
-            # Ensure each item is a string, handling dicts/non-strings gracefully and filtering N/A entries
-            list_items = [str(item) for item in data if item and str(item).strip() and str(item).lower().strip() != 'n/a']
-            if list_items:
-                st.markdown("\n".join([f"* {s}" for s in list_items]))
-            else:
-                st.markdown(f"*{default_message}*")
-        # Check if the data is a single non-N/A string
-        elif isinstance(data, str) and data.lower().strip() != 'n/a':
-             st.markdown(f"*{data}*")
-        else:
-            st.markdown(f"*{default_message}*")
-
-    st.markdown(f"**Title:** **{jd_data.get('title', 'N/A')}**")
-    st.markdown(f"**Company:** {jd_data.get('company', 'N/A')} | **Location:** {jd_data.get('location', 'N/A')} | **Experience Level:** {jd_data.get('experience_level', 'N/A').title()}")
-    
-    st.subheader("Key Requirements")
-    
-    col_req, col_qual = st.columns(2)
-
-    with col_req:
-        st.markdown("**Required Skills:**")
-        safe_display_list(jd_data.get('required_skills'))
-    with col_qual:
-        st.markdown("**Qualifications:**")
-        safe_display_list(jd_data.get('qualifications'))
-
-    st.subheader("Responsibilities")
-    safe_display_list(jd_data.get('responsibilities'), default_message="No explicit responsibilities listed.")
-    
-    st.subheader("Benefits")
-    safe_display_list(jd_data.get('benefits'), default_message="No explicit benefits listed.")
-
-    st.markdown("---")
-    tab_raw, tab_json = st.tabs(["Raw JD Text", "JSON Data"])
-    
-    with tab_raw:
-        st.text_area("Original JD Text", jd_data.get('raw_text', 'N/A'), height=200, key=f"raw_text_{jd_key}")
-        
-    with tab_json:
-         json_output = json.dumps(jd_data, indent=4)
-         st.code(json_output, language="json")
-         st.download_button(
-            label="Download JD JSON",
-            data=json_output,
-            file_name=f"{jd_data.get('title', 'JD')}_data.json",
-            mime="application/json",
-            key=f"download_json_jd_{jd_key}" 
-        )
-        
-    # Consistent layout for the delete button
-    col_space, col_delete = st.columns([0.8, 0.2])
-    with col_delete:
-        st.button(
-            "❌ Remove This JD", 
-            key=f"delete_jd_{jd_key}", 
-            on_click=lambda k=jd_key: st.session_state.managed_jds.pop(k),
-            args=(),
-            type="secondary",
-            use_container_width=True
-        )
-# --- END JD Management Utility Functions ---
-
-
 # --- (Form/State Management functions remain unchanged) ---
 
 def save_form_cv():
@@ -1061,17 +858,16 @@ def resume_parsing_tab():
     st.markdown("---")
     
     if not GROQ_API_KEY:
-        st.error("GROQ_API_KEY is missing. AI Parsing functions are disabled.")
+        st.error("GROQ_API_KEY is missing. AI Parsing features are disabled.")
         process_button = st.button("✨ Parse and Load Uploaded File", type="primary", use_container_width=True, disabled=True)
     else:
-        process_button = st.button("✨ Parse and Load CV Data", type="primary", use_container_width=True)
+        process_button = st.button("✨ Parse and Load Uploaded File", type="primary", use_container_width=True)
 
 
     if process_button:
         extracted_text = ""
         file_name = "Pasted_Resume"
         
-        # --- FIX: Robustly check for file or text ---
         if uploaded_file is not None:
             file_name = uploaded_file.name
             file_bytes = uploaded_file.getvalue()
@@ -1084,11 +880,11 @@ def resume_parsing_tab():
             extracted_text = pasted_text.strip()
             
         else:
-            st.warning("❌ Please upload a file or paste text content to proceed with parsing.")
+            st.warning("Please upload a file or paste text content to proceed with parsing.")
             return
 
         if extracted_text.startswith("Error") or not extracted_text:
-            st.error(f"❌ Text Extraction Failed: {extracted_text}")
+            st.error(f"Text Extraction Failed: {extracted_text}")
             error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
             st.session_state.managed_cvs[error_key] = "Extraction Error: " + extracted_text
             st.session_state.current_resume_name = error_key
@@ -1099,7 +895,7 @@ def resume_parsing_tab():
             parsed_data = parse_cv_with_llm(extracted_text)
         
         if "error" in parsed_data:
-            st.error(f"❌ AI Parsing Failed: {parsed_data['error']}")
+            st.error(f"AI Parsing Failed: {parsed_data['error']}")
             st.code(parsed_data.get('raw_output', 'No raw output available.'), language='text')
             error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
             st.session_state.managed_cvs[error_key] = "AI Parsing Error: " + parsed_data['error']
@@ -1146,7 +942,6 @@ def resume_parsing_tab():
             st.error(f"❌ Internal Error: Parsed data for **{candidate_name}** is not a dictionary. Please check LLM output logic.")
 
         st.session_state.show_cv_output = cv_key_name
-        # --- FIX: Rerun to refresh all stateful components (like the form fields) ---
         st.rerun() 
 
 # --- CORE CV FORM FUNCTION ---
@@ -1363,7 +1158,8 @@ def cv_form_content():
             
         col_tech, col_link = st.columns(2)
         with col_tech:
-            new_technologies = st.text_input("Technologies Used (Comma separated list, e.g., Python, SQL, Streamlit)", key="form_new_technologies")
+            # UPDATED LABEL HERE
+            new_technologies = st.text_input("Skills or Tools or Technologies Used (Comma separated list, e.g., Python, SQL, Streamlit)", key="form_new_technologies")
         with col_link:
             new_app_link = st.text_input("App Link / Repository URL (Optional)", key="form_new_app_link")
 
@@ -1455,156 +1251,172 @@ def tab_cv_management():
             
     cv_form_content()
 
-# -------------------------
-# JD MANAGEMENT TAB CONTENT (FIXED FOR DISPLAY)
-# -------------------------
+# ----------------------------------------------------
+# JD MANAGEMENT TAB CONTENT (SIMPLIFIED MOCK VERSION)
+# ----------------------------------------------------
+
+def display_jd_details(key, display_full_text=False):
+    """Displays the structured details of the selected MOCK JD."""
+    jd_data = st.session_state.managed_jds.get(key)
+    
+    if not jd_data or isinstance(jd_data, str):
+        st.error(f"Error: JD '{key}' data is corrupted or missing. Data: {jd_data}")
+        return
+
+    st.markdown(f"### 💼 JD View: **{jd_data.get('title', 'N/A')}**")
+    st.caption(f"JD Key: `{key}` | Source: {jd_data.get('source', 'N/A')}")
+    
+    # --- Structured Summary Details ---
+    st.markdown("#### Structured Summary (Parsed)")
+    
+    st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
+    st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+    
+    st.markdown("#### Required Skills")
+    st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+
+    st.markdown("#### Qualifications")
+    st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
+    
+    st.markdown("#### Responsibilities")
+    st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
+
+    if display_full_text and jd_data.get('raw_text'):
+        st.markdown("#### Full Original Text")
+        with st.expander("View Raw JD Text"):
+            st.code(jd_data['raw_text'], language='text')
+
+    if st.session_state.page == "candidate_dashboard":
+        # Only show hide button if called from Filter Tab
+        if st.session_state.get('show_jd_details_from_filter'):
+            if st.button("⬅️ Hide Details", key="hide_jd_details"):
+                st.session_state.selected_jd_key = None
+                st.session_state.show_jd_details_from_filter = False
+                st.rerun()
+
 
 def jd_management_tab():
-    st.header("📚 Manage Job Descriptions for Matching")
-    st.caption("Add multiple JDs here to compare your resume against them in the next tabs.")
+    st.header("Job Description (JD) Management (Mock Data)")
+    st.caption("This tab uses a **pre-loaded mock list of JDs** for matching and filtering features. No upload or parsing is done here.")
     
-    if not GROQ_API_KEY:
-        st.error("⚠️ GROQ_API_KEY is missing. JD Management (AI Parsing) is disabled.")
-
+    st.info(f"💾 **JD Management Status:** You currently have **{len(st.session_state.managed_jds)}** mock Job Descriptions loaded.")
+    
     st.markdown("---")
-
-    col_method = st.columns([1])[0] # Simplified layout for methods
-    with col_method:
-        st.selectbox("Add JD by:", options=["Upload File", "Paste Text"], key="jd_method_select")
-        
-    current_method = st.session_state.jd_method_select
-
-    st.markdown("---")
-
-    # --- JD Input Section ---
-    if current_method == "Upload File":
-        uploaded_files = st.file_uploader(
-            "Upload JD file(s)", 
-            type=['pdf', 'docx', 'txt'], 
-            accept_multiple_files=True,
-            help="Drag and drop file here. Limit 200MB per file.",
-            key="jd_file_uploader"
-        )
-        
-        if st.button("➕ Add JD(s) from File", type="primary", use_container_width=True, disabled=not uploaded_files):
-            process_jd_file(uploaded_files)
-
-    elif current_method == "Paste Text":
-        pasted_text = st.text_area(
-            "Paste JD Text Here",
-            height=300,
-            key="jd_paster_content",
-            placeholder="Paste the full job description text here."
-        )
-        if st.button("➕ Add JD from Text", type="primary", use_container_width=True, disabled=not pasted_text.strip()):
-            process_jd_text(pasted_text)
-
-    st.markdown("---")
-
-    # --- Current JDs Added Section ---
-    st.subheader("✅ Current JDs Added")
     
-    managed_jds = st.session_state.managed_jds
+    jd_keys = list(st.session_state.managed_jds.keys())
     
-    # Filter JDs to only show valid dictionary entries
-    valid_jds = {k: v for k, v in managed_jds.items() if isinstance(v, dict) and "error" not in v}
-    error_jds = {k: v for k, v in managed_jds.items() if isinstance(v, dict) and "error" in v}
-    
-    if valid_jds:
-        st.info(f"You have **{len(valid_jds)}** structured Job Description(s) available for matching.")
+    if jd_keys:
+        st.markdown("#### Available Mock JDs")
         
-        if st.button("🗑️ Clear All JDs", type="secondary"):
-            clear_all_jds()
-            st.rerun()
-
-        # Display valid JD details
-        for jd_key, jd_data in valid_jds.items():
+        # Display buttons for each mock JD to view details
+        max_cols = 3 
+        cols = st.columns(max_cols) 
+        
+        selected_key = st.session_state.get('selected_jd_key_management_tab')
+        
+        for i, key in enumerate(jd_keys):
+            jd_data = st.session_state.managed_jds.get(key, {})
             title = jd_data.get('title', 'N/A')
-            company = jd_data.get('company', 'N/A')
             
-            # --- FIX: Better display title ---
-            display_title = f"**{title}** at {company}" if title != 'N/A' and company != 'N/A' else f"**{title if title != 'N/A' else company if company != 'N/A' else 'Untitled JD'}** ({jd_key.split('_')[-1]})"
-
-            with st.expander(display_title):
-                display_jd_details(jd_key)
-    else:
-        st.info("No structured Job Descriptions have been successfully added yet.")
+            with cols[i % max_cols]:
+                button_label = f"👁️ View: {title}"
+                if st.button(button_label, key=f"view_mock_jd_{key}", use_container_width=True):
+                    st.session_state.selected_jd_key_management_tab = key
+                    st.rerun()
         
-    if error_jds:
-        st.warning(f"⚠️ **{len(error_jds)}** JDs failed to parse or have corrupted data.")
-        with st.expander("View Error JDs"):
-            for jd_key, jd_data in error_jds.items():
-                st.error(f"Key: {jd_key} | Error: {jd_data.get('error', 'Corrupted Data')}")
-                # Provide a manual delete button for error entries
-                st.button(
-                    "❌ Remove Error JD", 
-                    key=f"delete_error_jd_{jd_key}", 
-                    on_click=lambda k=jd_key: st.session_state.managed_jds.pop(k),
-                    args=(),
-                    type="secondary"
-                )
-                st.markdown("---")
+        st.markdown("---")
+        
+        # Display the details of the selected mock JD
+        if selected_key and selected_key in st.session_state.managed_jds:
+            display_jd_details(selected_key, display_full_text=True)
+        else:
+            st.info("Select a JD above to view its structured details.")
+            
+    else:
+        st.warning("No mock JDs loaded. This is unexpected. Please check application initialization.")
 
-# -------------------------
-# BATCH JD MATCH TAB CONTENT (USING MANAGED JDS)
-# -------------------------
+
+# --- BATCH JD MATCH TAB CONTENT (UPDATED CV SELECTION & REPORT TABLE) ---
 
 def batch_jd_match_tab():
     st.header("🏆 Batch JD Match")
-    st.caption("Compare your current CV against your managed Job Descriptions.")
+    st.caption("Compare your current CV against all saved mock job descriptions.")
 
     cv_keys_all = list(st.session_state.managed_cvs.keys())
-    jd_keys_all = list(st.session_state.managed_jds.keys())
-    
     cv_data_items = st.session_state.managed_cvs.items()
     
-    # 1. CV Selection
+    # 1. Filter for CVs created via the Resume Parsing tab ('Parsing_Upload')
+    parsing_cv_items = [
+        (k, v) for k, v in cv_data_items 
+        if isinstance(v, dict) and v.get('source_type') == 'Parsing_Upload'
+    ]
+    
     selected_cv_key = None
     cv_data = None
     
+    st.markdown("#### 1. Select Candidate CV")
+    
     if not cv_keys_all:
-        st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management (Form)' tabs.")
-        return
+        st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management' tabs.")
+    else:
+        # Give preference to the latest parsed CV, otherwise use the latest saved CV
+        valid_cv_keys = {k: v.get('name', k) for k, v in cv_data_items if isinstance(v, dict)}
+        
+        if valid_cv_keys:
+            # Try to pre-select the latest *parsed* CV if available
+            initial_key = next((k for k, v in reversed(list(cv_data_items)) if isinstance(v, dict) and v.get('source_type') == 'Parsing_Upload'), list(valid_cv_keys.keys())[-1])
+        
+            selected_cv_key = st.selectbox(
+                "Choose the CV to use for matching:",
+                options=list(valid_cv_keys.keys()),
+                format_func=lambda k: valid_cv_keys[k],
+                index=list(valid_cv_keys.keys()).index(initial_key) if initial_key in valid_cv_keys else 0,
+                key="batch_cv_select"
+            )
+            cv_data = st.session_state.managed_cvs.get(selected_cv_key)
+        else:
+            st.warning("⚠️ **No valid CVs available.** All managed CVs are either corrupted or empty.")
 
-    # Filter for valid CVs
-    valid_cv_items = [(k, v) for k, v in cv_data_items if isinstance(v, dict)]
-    
-    if not valid_cv_items:
-         st.warning("⚠️ **No valid CVs available.** All managed CVs are either corrupted or empty.")
-         return
-         
-    # Default to the latest valid CV
-    selected_cv_key = valid_cv_items[-1][0]
-    cv_data = valid_cv_items[-1][1]
-    
-    st.info(f"CV Selected for Matching: **{cv_data.get('name', 'N/A')}** ({selected_cv_key})")
+
     st.markdown("---")
 
-    # 2. JD Selection
-    valid_jd_items = {k: v for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and "error" not in v}
-    
-    if not valid_jd_items:
-        st.warning("⚠️ **No valid Job Descriptions available.** Please add and successfully parse JDs in the 'JD Management' tab.")
-        return
-        
-    jd_options = {k: f"{v.get('title', 'N/A')} at {v.get('company', 'N/A')}" for k, v in valid_jd_items.items()}
+    # --- JD Selection ---
+    st.markdown("#### 2. Select Job Descriptions")
+    jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
 
-    selected_jds = st.multiselect(
-        "Select Job Descriptions to Match Against",
-        options=list(jd_options.keys()),
-        format_func=lambda k: jd_options[k],
-        default=list(jd_options.keys()),
-        key="batch_jd_multiselect"
-    )
+    if not jd_keys_valid:
+        st.warning("⚠️ **No valid JDs available.** Mock JDs should be loaded on dashboard start.")
+        selected_jds = []
+    else:
+        jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
+        
+        # FIX: Validate and clean the default selection list against available JD keys
+        default_selected_jds = st.session_state.get('selected_jds_for_match', list(jd_options.keys())) # Default to all mock JDs
+        cleaned_default_jds = [
+            key for key in default_selected_jds 
+            if key in jd_options.keys()
+        ]
+        
+        selected_jds = st.multiselect(
+            "Select Job Descriptions to Match Against",
+            options=list(jd_options.keys()),
+            format_func=lambda k: jd_options[k],
+            default=cleaned_default_jds, 
+            key="batch_jd_multiselect"
+        )
+        st.session_state.selected_jds_for_match = selected_jds
 
     st.markdown("---")
 
     # --- Match Button ---
+    if not GROQ_API_KEY:
+        st.error("AI Matching disabled: GROQ_API_KEY not set. Cannot run mock match.")
+    
     match_button = st.button(
         f"🚀 Run Match Analysis on {len(selected_jds)} Selected JD(s)", 
         type="primary", 
         use_container_width=True, 
-        disabled=not (selected_cv_key and selected_jds)
+        disabled=not (selected_cv_key and selected_jds) or not GROQ_API_KEY
     )
 
     # --- Core Logic Execution ---
@@ -1618,13 +1430,13 @@ def batch_jd_match_tab():
             for jd_key in selected_jds:
                 jd_data = st.session_state.managed_jds.get(jd_key)
                 if jd_data and isinstance(jd_data, dict):
-                    # Run the match function
-                    result = mock_jd_match(cv_data, jd_data)
+                    # NOTE: mock_jd_match is still being called
+                    result = mock_jd_match(cv_data, jd_data) 
                     result['jd_key'] = jd_key
                     result['jd_title'] = jd_data.get('title', jd_key)
                     match_results.append(result)
                 else:
-                    st.warning(f"Skipped JD **{jd_key}** due to missing or corrupted JD data.")
+                    st.warning(f"Skipped JD **{jd_key}** due to corrupted data.")
         
         match_results.sort(key=lambda x: x['score_100'], reverse=True)
         st.session_state.candidate_results = match_results
@@ -1632,8 +1444,8 @@ def batch_jd_match_tab():
     
     st.markdown("---")
 
-    # --- 2. Results Display ---
-    st.markdown("#### 2. Match Report")
+    # --- 3. Results Display (UPDATED TABLE FORMATTING) ---
+    st.markdown("#### 3. Match Report")
     
     if st.session_state.get('candidate_results'):
         results = st.session_state.candidate_results
@@ -1645,6 +1457,7 @@ def batch_jd_match_tab():
                 "Job Description (Ranked)": r.get('jd_title', 'N/A'),
                 "Role": r.get('job_role', 'N/A'),
                 "Job Type": r.get('job_type', 'N/A'),
+                # Remove progress bar formatting, display as numbers/strings
                 "Overall Fit Score": f"{r.get('score_10', 0):.1f}/10",
                 "Skills Match": f"{r.get('skills_percent', 0)}%",
                 "Experience Match": f"{r.get('experience_percent', 0)}%",
@@ -1696,7 +1509,7 @@ def batch_jd_match_tab():
         st.info("Run the Match Analysis above to generate the report.")
 
 # -------------------------
-# COVER LETTER GENERATION TAB CONTENT (USING MANAGED JDS)
+# COVER LETTER GENERATION TAB CONTENT
 # -------------------------
 
 @st.cache_data(show_spinner="✍️ Generating personalized cover letter with Groq LLM...")
@@ -1724,9 +1537,9 @@ def generate_cover_letter_llm(cv_data, jd_data, recipient_info):
     jd_skills = ', '.join([str(s) for s in jd_data.get('required_skills', [])[:5]]) # Top 5 required skills
     jd_qualifications = ', '.join([str(q) for q in jd_data.get('qualifications', [])[:3]]) # Top 3 qualifications
 
-    # Use details from JD data
+    # Use defaults/placeholders as recipient inputs are now removed
     recipient_name = recipient_info.get('recipient_name', 'Hiring Manager')
-    company_name = jd_data.get('company', recipient_info.get('company_name', 'Hiring Team'))
+    company_name = recipient_info.get('company_name', 'Hiring Team')
 
     prompt = f"""
     You are an expert career consultant. Write a professional and compelling cover letter for a job application.
@@ -1804,18 +1617,17 @@ def format_cl_to_html(cl_text, cv_data, jd_data):
 
 def cover_letter_tab():
     st.header("💌 Generate Personalized Cover Letter")
-    st.caption("Generate a cover letter tailored to a specific CV and managed JD.")
+    st.caption("Generate a cover letter tailored to a specific CV and JD.")
 
     if not GROQ_API_KEY:
         st.error("⚠️ GROQ_API_KEY is missing. Cover Letter generation is disabled.")
         return
 
     cv_keys_valid = {k: v.get('name', k) for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict)}
-    jd_keys_valid = {k: f"{v.get('title', 'N/A')} at {v.get('company', 'N/A')}" for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and "error" not in v}
-
+    jd_keys_valid = {k: v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)}
 
     if not cv_keys_valid or not jd_keys_valid:
-        st.warning("Please ensure you have at least **one valid CV** saved in CV Management and **one JD** added in JD Management.")
+        st.warning("Please ensure you have at least **one valid CV** and **one mock JD** saved in their respective tabs to use this feature.")
         return
         
     st.markdown("---")
@@ -1838,14 +1650,19 @@ def cover_letter_tab():
         
     st.markdown("---")
     
-    # Default Recipient Info (can be customized if needed)
-    jd_data_selected = st.session_state.managed_jds.get(selected_jd_key, {})
+    # Define placeholder recipient details using JD title to guess company/role
+    if selected_jd_key:
+        jd_title_guess = jd_keys_valid.get(selected_jd_key, "The Role")
+    else:
+        jd_title_guess = "The Role"
+
+    # Default Recipient Info
     recipient_info = {
         "recipient_name": "Hiring Manager",
-        "company_name": jd_data_selected.get('company', 'The Company') # Use JD's company if available
+        "company_name": "The Company Hiring for " + jd_title_guess # A small guess based on JD title
     }
     
-    st.info(f"The Cover Letter will be personalized using the JD details (Company: **{recipient_info['company_name']}**).")
+    st.info(f"The Cover Letter will be addressed to the **{recipient_info['recipient_name']}** at **{recipient_info['company_name']}**.")
 
     st.markdown("---")
     
@@ -1862,7 +1679,7 @@ def cover_letter_tab():
         cv_data = st.session_state.managed_cvs.get(selected_cv_key)
         jd_data = st.session_state.managed_jds.get(selected_jd_key)
         
-        if not cv_data or not jd_data or isinstance(cv_data, str) or isinstance(jd_data, str) or "error" in jd_data:
+        if not cv_data or not jd_data or isinstance(cv_data, str) or isinstance(jd_data, str):
             st.error("Error: Selected CV or JD data is corrupted or missing.")
             return
 
@@ -1889,10 +1706,7 @@ def cover_letter_tab():
         st.markdown("---")
         
         # Download options
-        cv_data = st.session_state.managed_cvs.get(selected_cv_key, {})
-        jd_data = st.session_state.managed_jds.get(selected_jd_key, {})
-
-        html_output = format_cl_to_html(cl_text, cv_data, jd_data)
+        html_output = format_cl_to_html(cl_text, st.session_state.managed_cvs.get(selected_cv_key, {}), st.session_state.managed_jds.get(selected_jd_key, {}))
         
         col_dl_html, col_dl_txt = st.columns(2)
         with col_dl_html:
@@ -1913,76 +1727,180 @@ def cover_letter_tab():
             )
 
 # -------------------------
-# FILTER JD TAB CONTENT (UPDATED)
+# FILTER JD TAB CONTENT
 # -------------------------
 
 def filter_jd_tab():
-    st.header("🔍 Filter Job Descriptions (Mock)")
-    st.caption("Filter your managed JDs based on matching criteria (Feature Mock).")
-    
-    st.warning("This tab is a feature mock. It requires advanced filtering logic not fully implemented yet.")
-    
-    # Filter to only use valid JDs for filtering
-    managed_jds = {k: v for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and "error" not in v}
-    if not managed_jds:
-        st.info("No valid JDs available to filter. Please add JDs in the 'JD Management' tab.")
-        return
+    st.header("🔍 Filter Job Descriptions (Mock Data)")
+    st.caption("Use the filters below to narrow down the saved mock JDs.")
+
+    # --- Filter Inputs ---
+    with st.form("jd_filter_form"):
+        st.markdown("#### 1. Filter by Skills")
+        
+        filter_skills_input = st.text_input(
+            "Enter key skills (comma-separated). JDs must contain at least one of these.",
+            key="filter_skills_input",
+            placeholder="Python, SQL, AWS, Leadership"
+        )
+        
+        # Setting filter_min_skills to 1 if skills input is used, or 0 if empty
+        filter_min_skills = 1 if filter_skills_input.strip() else 0
+
+
+        st.markdown("---")
+        st.markdown("#### 2. Filter by Job Type & Role")
+        
+        col_job_type, col_role = st.columns(2)
+        with col_job_type:
+            # --- Use st.selectbox for single selection with 'All Job Types' ---
+            JOB_TYPE_OPTIONS = ['All Job Types', 'Full-time', 'Internship', 'Part-time', 'Hybrid', 'Remote', 'Contract/Temp']
+            filter_job_type = st.selectbox(
+                "Select Job Type",
+                options=JOB_TYPE_OPTIONS,
+                index=0, # Default to 'All Job Types'
+                key="filter_job_type_select_filter_tab" # Use a unique key
+            )
+            
+        with col_role:
+            filter_role_input = st.text_input(
+                "Enter Role Keyword (e.g., 'Analyst', 'Engineer', 'Manager'). JDs must contain this keyword.",
+                key="filter_role_input",
+                placeholder="Data Scientist"
+            )
+
+        apply_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
     st.markdown("---")
-    
-    jd_keys = list(managed_jds.keys())
-    
-    # Mock Filter 1: Experience Level
-    exp_levels = sorted(list(set(d.get('experience_level', 'Unknown') for d in managed_jds.values())))
-    selected_exp = st.multiselect("Filter by Experience Level", options=exp_levels, default=exp_levels)
+    st.markdown("#### 3. Matched Job Descriptions")
 
-    # Mock Filter 2: Skills Presence (Takes a random skill from all JDs)
-    all_skills = set()
-    for jd in managed_jds.values():
-        if jd.get('required_skills'):
-            all_skills.update([s.lower().strip() for s in jd['required_skills'] if s])
-    
-    top_skills = sorted(list(all_skills))
-    selected_skills = st.multiselect("Filter by Required Skills (AND logic)", options=top_skills[:20]) # Limit to 20 for UI
+    if apply_button:
+        
+        # --- Pre-process Filters ---
+        search_skills = {s.strip().lower() for s in filter_skills_input.split(',') if s.strip()}
+        search_roles = {r.strip().lower() for r in filter_role_input.split(',') if r.strip()}
+        
+        # Only run filter logic if *any* filter besides 'All Job Types' is active
+        if not search_skills and (filter_job_type == 'All Job Types') and not search_roles:
+            st.warning("Please enter or select at least one filter criterion (excluding 'All Job Types') to apply.")
+            st.session_state.filtered_jds = []
+            st.session_state.show_jd_details_from_filter = False
+            st.session_state.selected_jd_key = None
+            st.rerun()
 
-    st.markdown("---")
-    
-    filtered_results = []
-    
-    if st.button("Apply Filters"):
-        for jd_key, jd_data in managed_jds.items():
-            
-            # Apply Experience Filter
-            exp_match = jd_data.get('experience_level', 'Unknown') in selected_exp
-            
-            # Apply Skills Filter (AND logic: JD must have ALL selected skills)
-            jd_skills_lower = {s.lower() for s in jd_data.get('required_skills', [])}
-            skills_match = all(skill.lower() in jd_skills_lower for skill in selected_skills)
-            
-            if exp_match and skills_match:
-                filtered_results.append((jd_key, jd_data))
-
-        st.session_state.filtered_jds = filtered_results
-        st.success(f"Found {len(filtered_results)} JD(s) matching the criteria.")
-
-    st.markdown("---")
-    
-    if st.session_state.get('filtered_jds'):
-        st.subheader("Filtered Job Descriptions")
-        if not st.session_state.filtered_jds:
-            st.info("No JDs match the applied filters.")
-        else:
-            for jd_key, jd_data in st.session_state.filtered_jds:
-                title = jd_data.get('title', 'N/A')
-                company = jd_data.get('company', 'N/A')
+        matched_jds = []
+        valid_jds = st.session_state.managed_jds
+        
+        with st.spinner("Applying filters..."):
+            for jd_key, jd_data in valid_jds.items():
+                if isinstance(jd_data, str):
+                    continue # Skip corrupted entries
                 
-                st.markdown(f"**{title}** at {company} - Exp: *{jd_data.get('experience_level', 'N/A')}*")
-                # Optionally display matching skills
-                jd_skills_lower = {s.lower() for s in jd_data.get('required_skills', [])}
-                matching_skills = [s.title() for s in selected_skills if s.lower() in jd_skills_lower]
-                if matching_skills:
-                    st.caption(f"Matching Skills: {', '.join(matching_skills)}")
-                st.divider()
+                jd_title_lower = jd_data.get('title', '').lower()
+                jd_raw_text_lower = jd_data.get('raw_text', '').lower()
+                jd_skills_lower = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
+
+                # --- Skills Filter Logic ---
+                skills_match_count = 0
+                skills_passed = True
+                if search_skills:
+                    common_skills = search_skills.intersection(jd_skills_lower)
+                    skills_match_count = len(common_skills)
+                    if skills_match_count < filter_min_skills: # filter_min_skills is 1 if input is used, 0 otherwise
+                        skills_passed = False
+                
+                if not skills_passed:
+                    continue
+                
+                # --- Job Type Filter Logic ---
+                # Determine the JD's job type (Mocked logic)
+                jd_type_mock = "Full-time"
+                if 'internship' in jd_raw_text_lower:
+                    jd_type_mock = "Internship"
+                elif 'part-time' in jd_raw_text_lower:
+                    jd_type_mock = "Part-time"
+                elif 'hybrid' in jd_raw_text_lower or ('mix' in jd_raw_text_lower and 'remote' in jd_raw_text_lower):
+                    jd_type_mock = "Hybrid"
+                elif 'remote' in jd_raw_text_lower or 'work from home' in jd_raw_text_lower:
+                    jd_type_mock = "Remote"
+                elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
+                    jd_type_mock = "Contract/Temp"
+
+                if filter_job_type != 'All Job Types' and jd_type_mock != filter_job_type:
+                    continue # Failed job type filter
+
+                # --- Role Filter Logic (Search in Title) ---
+                role_passed = True
+                if search_roles:
+                    # Check if any part of the JD title contains the role keyword(s)
+                    if not any(role in jd_title_lower for role in search_roles):
+                        role_passed = False
+                    
+                if not role_passed:
+                    continue
+
+                # If all filters passed, add to matches
+                matched_jds.append({
+                    "JD Key": jd_key,
+                    "Title": jd_data.get('title', jd_key),
+                    "Job Type": jd_type_mock,
+                    "Skills Found": skills_match_count,
+                    "Experience Level": jd_data.get('experience_level', 'N/A')
+                })
+        
+        st.session_state.filtered_jds = matched_jds
+        st.session_state.show_jd_details_from_filter = False # Hide details after running new filter
+        st.session_state.selected_jd_key = None
+        st.success(f"Filter complete: Found **{len(matched_jds)}** matching mock Job Descriptions.")
+        
+        # Sort by skills match count (descending)
+        matched_jds.sort(key=lambda x: x['Skills Found'], reverse=True)
+        
+    # --- Display Results ---
+    if st.session_state.get('filtered_jds'):
+        results_df = pd.DataFrame(st.session_state.filtered_jds)
+        
+        # Use simple dataframe for display
+        st.dataframe(
+            results_df.set_index("JD Key"), 
+            use_container_width=True,
+            column_order=["Title", "Job Type", "Experience Level", "Skills Found"]
+        )
+
+        st.markdown("---")
+        
+        # --- Display Buttons for Details ---
+        
+        if st.session_state.get('show_jd_details_from_filter') and st.session_state.get('selected_jd_key'):
+             # Show the selected JD details if the flag is set
+            st.markdown("##### Selected Job Description Details:")
+            # Updated to show full text for the filter view
+            display_jd_details(st.session_state.selected_jd_key, display_full_text=True)
+        else:
+            # Show buttons to view details for the filtered list
+            st.markdown("##### View Details for Matched JDs:")
+            jd_keys = results_df['JD Key'].tolist()
+            
+            max_cols = 3 
+            cols = st.columns(max_cols) 
+
+            for i, key in enumerate(jd_keys):
+                jd_data = st.session_state.managed_jds.get(key, {})
+                title = jd_data.get('title', 'N/A')
+                
+                with cols[i % max_cols]:
+                    with st.container(border=True):
+                        st.markdown(f"**{i+1}. {title}**")
+                        if st.button("👁️ View JD Details", key=f"view_filtered_jd_btn_{key}", use_container_width=True):
+                            st.session_state.selected_jd_key = key
+                            st.session_state.show_jd_details_from_filter = True # Flag to show single JD view
+                            st.rerun()
+            
+    elif not apply_button:
+        st.info("Set your filters and click 'Apply Filters' to see matched JDs.")
+    elif st.session_state.get('filtered_jds') is not None and len(st.session_state.filtered_jds) == 0:
+        st.warning("No Job Descriptions matched the current filter criteria.")
+
 
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION
@@ -1994,17 +1912,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            # Explicitly delete all sensitive/large state keys
-            keys_to_delete = [
-                'candidate_results', 'current_resume', 'managed_cvs', 'current_resume_name', 
-                'form_education', 'form_experience', 'form_certifications', 'form_projects', 
-                'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 
-                'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 
-                'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 
-                'batch_jd_multiselect', 'last_cover_letter', 'cl_cv_name', 'cl_jd_title', 
-                'managed_jds', 'selected_jd_key', 'jd_paster_content', 'jd_file_uploader',
-                'filtered_jds', '_mock_jds_temp' # Clear any mock/temporary states
-            ]
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type_select_filter_tab', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter', 'last_cover_letter', 'cl_cv_name', 'cl_jd_title', 'latest_added_jd_key', 'selected_jd_key_management_tab']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -2015,17 +1923,27 @@ def candidate_dashboard():
 
     # --- Session State Initialization for Candidate ---
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
-    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} 
+    # Use MOCK_JDS for initialization
+    if "managed_jds" not in st.session_state or not st.session_state.managed_jds: 
+        st.session_state.managed_jds = MOCK_JDS.copy() # Load mock data initially
     
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
+    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None
+    if "selected_jds_for_match" not in st.session_state: st.session_state.selected_jds_for_match = list(st.session_state.managed_jds.keys()) 
     if "candidate_results" not in st.session_state: st.session_state.candidate_results = None 
-    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None 
+    if "filtered_jds" not in st.session_state: st.session_state.filtered_jds = None 
+    if "show_jd_details_from_filter" not in st.session_state: st.session_state.show_jd_details_from_filter = False 
+    if "latest_added_jd_key" not in st.session_state: st.session_state.latest_added_jd_key = list(MOCK_JDS.keys())[-1] if MOCK_JDS else None # Point to a mock JD
+
+    # NEW JD Management selection state
+    if "selected_jd_key_management_tab" not in st.session_state: st.session_state.selected_jd_key_management_tab = list(MOCK_JDS.keys())[0] if MOCK_JDS else None
     
     # NEW Cover Letter State
     if "last_cover_letter" not in st.session_state: st.session_state.last_cover_letter = None
     if "cl_cv_name" not in st.session_state: st.session_state.cl_cv_name = None
     if "cl_jd_title" not in st.session_state: st.session_state.cl_jd_title = None
+
 
     # Initialize keys for personal details to ensure stability
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
@@ -2036,21 +1954,15 @@ def candidate_dashboard():
     if "form_summary_value" not in st.session_state: st.session_state.form_summary_value = ""
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
-    
-    # Initialize keys for JD input fields
-    if "jd_paster_content" not in st.session_state: st.session_state.jd_paster_content = ""
-    
-    # Clear mock JD storage as we now use managed JDs
-    if "_mock_jds_temp" in st.session_state: del st.session_state._mock_jds_temp
 
     # --- Main Content with Tabs ---
-    tab_parsing, tab_management, tab_jd_management, tab_filter_jd, tab_match, tab_cl = st.tabs([
+    tab_parsing, tab_management, tab_jd, tab_filter_jd, tab_match, tab_cl = st.tabs([
         "📄 Resume Parsing", 
         "📝 CV Management (Form)", 
-        "📚 JD Management", # NEW TAB
+        "💼 JD Management", 
         "🔍 Filter JD", 
         "🏆 Batch JD Match", 
-        "💌 Generate Cover Letter"
+        "💌 Generate Cover Letter" 
     ])
     
     with tab_parsing:
@@ -2059,16 +1971,16 @@ def candidate_dashboard():
     with tab_management:
         tab_cv_management()
         
-    with tab_jd_management: # NEW TAB CONTENT
+    with tab_jd:
         jd_management_tab()
-        
+
     with tab_filter_jd: 
         filter_jd_tab()
         
     with tab_match:
         batch_jd_match_tab()
 
-    with tab_cl:
+    with tab_cl: 
         cover_letter_tab()
 
 
