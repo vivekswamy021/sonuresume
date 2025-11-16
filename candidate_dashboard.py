@@ -199,13 +199,22 @@ def parse_jd_with_llm(text):
             # Ensure raw_text is included even if the LLM missed it
             parsed['raw_text'] = text
             
-            # Robustly ensure skill lists are present and clean
+            # Robustly ensure skill lists are present and clean (TWEAKED FALLBACK)
             if 'required_skills' not in parsed or not isinstance(parsed['required_skills'], list):
-                 # Fallback extraction if LLM fails list format
-                skills_match = re.findall(r'[Ss]kills[:\s]*(.*?)[.>]', text, re.DOTALL | re.IGNORECASE)
-                parsed['required_skills'] = [s.strip().lower() for match in skills_match for s in re.split(r',|\s+and\s+', match) if s.strip()]
+                 # Fallback extraction: look for common list indicators in raw text
+                keywords = ["skills", "requirements", "must have", "qualifications"]
+                fallback_skills = []
+                for keyword in keywords:
+                    # Simple regex to grab list-like content after keywords
+                    match = re.search(rf'{keyword}.*?[:\s]*(.*?)(?:\n\n|\n[A-Z][a-z])', text, re.DOTALL | re.IGNORECASE)
+                    if match:
+                         # Simple split and clean
+                        fallback_skills.extend([s.strip().lower() for s in re.split(r'[,\-•*]', match.group(1)) if s.strip() and len(s.strip()) > 2])
+
+                parsed['required_skills'] = list(set(fallback_skills))
                 if not parsed['required_skills']:
                      parsed['required_skills'] = ["python", "sql", "communication"] # Minimal fallback
+
         else:
             raise json.JSONDecodeError("Could not isolate a valid JSON structure.", content, 0)
 
@@ -793,6 +802,7 @@ def clear_all_jds():
     st.session_state.managed_jds = {}
     st.success("All managed Job Descriptions have been cleared.")
 
+# --- FIX: Updated display_jd_details for robust list handling ---
 def display_jd_details(jd_key):
     """Displays the structured data of a single JD in a clean format."""
     if jd_key not in st.session_state.managed_jds:
@@ -806,36 +816,53 @@ def display_jd_details(jd_key):
         return
         
     st.markdown(f"**Title:** {jd_data.get('title', 'N/A')}")
-    st.markdown(f"**Company:** {jd_data.get('company', 'N/A')} **Location:** {jd_data.get('location', 'N/A')}")
+    st.markdown(f"**Company:** {jd_data.get('company', 'N/A')} | **Location:** {jd_data.get('location', 'N/A')}")
     st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A').title()}")
     
     st.subheader("Key Requirements")
     
     col_req, col_qual = st.columns(2)
+
+    # Helper function to display lists robustly
+    def safe_display_list(data, default_message="N/A"):
+        if isinstance(data, list) and data:
+            # Ensure each item is a string, handling dicts/non-strings gracefully
+            list_items = [str(item) for item in data if item and str(item).strip()]
+            if list_items:
+                st.markdown("\n".join([f"* {s}" for s in list_items]))
+            else:
+                st.markdown(f"*{default_message}*")
+        else:
+            st.markdown(f"*{default_message}*")
+
+
     with col_req:
         st.markdown("**Required Skills:**")
-        st.markdown("\n".join([f"* {s}" for s in jd_data.get('required_skills', ['N/A'])]))
+        safe_display_list(jd_data.get('required_skills'))
     with col_qual:
         st.markdown("**Qualifications:**")
-        st.markdown("\n".join([f"* {q}" for q in jd_data.get('qualifications', ['N/A'])]))
+        safe_display_list(jd_data.get('qualifications'))
 
     st.subheader("Responsibilities")
-    st.markdown("\n".join([f"* {r}" for r in jd_data.get('responsibilities', ['N/A'])]))
+    safe_display_list(jd_data.get('responsibilities'), default_message="No explicit responsibilities listed.")
     
     st.subheader("Benefits")
-    st.markdown("\n".join([f"* {b}" for b in jd_data.get('benefits', ['N/A'])]))
+    safe_display_list(jd_data.get('benefits'), default_message="No explicit benefits listed.")
 
     st.markdown("---")
     with st.expander("View Raw JD Text"):
         st.text(jd_data.get('raw_text', 'N/A'))
-        with st.columns([1, 1, 1, 1])[3]:
-            # Delete button for single JD
+        
+        # Consistent layout for the delete button
+        col_space, col_delete = st.columns([0.8, 0.2])
+        with col_delete:
             st.button(
                 "❌ Remove This JD", 
                 key=f"delete_jd_{jd_key}", 
                 on_click=lambda k=jd_key: st.session_state.managed_jds.pop(k),
                 args=(),
-                type="secondary"
+                type="secondary",
+                use_container_width=True
             )
 # --- END JD Management Utility Functions ---
 
@@ -1477,7 +1504,7 @@ def batch_jd_match_tab():
         st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management (Form)' tabs.")
         return
 
-    # Filter for CVs created via the Resume Parsing tab ('Parsing_Upload')
+    # Filter for valid CVs
     valid_cv_items = [(k, v) for k, v in cv_data_items if isinstance(v, dict)]
     
     if not valid_cv_items:
@@ -1924,12 +1951,12 @@ def candidate_dashboard():
 
     # --- Session State Initialization for Candidate ---
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
-    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} # RE-INITIALIZED JD STATE
+    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} 
     
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
     if "candidate_results" not in st.session_state: st.session_state.candidate_results = None 
-    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None # RE-INITIALIZED
+    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None 
     
     # NEW Cover Letter State
     if "last_cover_letter" not in st.session_state: st.session_state.last_cover_letter = None
