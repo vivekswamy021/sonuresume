@@ -418,7 +418,6 @@ def mock_jd_match(cv_data, jd_data):
 
 def format_cv_to_html(cv_data, cv_name):
     """Formats the structured CV data into a clean HTML string for printing."""
-    # ... (Content remains unchanged) ...
     def list_to_html(items, tag='li'):
         if not items:
             return ""
@@ -551,7 +550,6 @@ def format_cv_to_html(cv_data, cv_name):
 
 def format_cv_to_markdown(cv_data, cv_name):
     """Formats the structured CV data into a viewable Markdown string."""
-    # ... (Content remains unchanged) ...
     md = f"""
 # {cv_data.get('name', cv_name)}
 ### Contact & Links
@@ -1249,45 +1247,18 @@ def tab_cv_management():
     cv_form_content()
 
 # -------------------------
-# JD MANAGEMENT TAB CONTENT
+# JD MANAGEMENT TAB CONTENT (REMOVED)
 # -------------------------
 
 def process_jd_file(file, jd_type):
-    """Handles processing a single JD file."""
-    file_name = file.name
-    file_bytes = file.getvalue()
-    file_type = get_file_type(file_name)
-    jd_key = file_name.replace('.', '_').replace(' ', '_').replace('-', '_') + "_" + datetime.now().strftime("%H%M")
-    
-    extracted_text = extract_content(file_type, file_bytes, file_name)
-    
-    if extracted_text.startswith("Error"):
-        st.session_state.managed_jds[jd_key] = f"Extraction Error: Failed to read file content ({file_type})."
-        return False, f"Extraction Failed for {file_name}: {extracted_text}"
-        
-    parsed_data = parse_jd_with_llm(extracted_text, jd_title=file_name)
-    
-    if "error" in parsed_data:
-        st.session_state.managed_jds[jd_key] = f"AI Parsing Error: {parsed_data['error']}"
-        return False, f"AI Parsing Failed for {file_name}: {parsed_data['error']}"
-    
-    st.session_state.managed_jds[jd_key] = parsed_data
-    st.session_state.managed_jds[jd_key]['raw_text'] = extracted_text
-    return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
+    """Handles processing a single JD file. (No longer called, but retained for clarity)."""
+    # This logic is retained but intentionally not used in the UI
+    pass
 
 def process_jd_text(text):
-    """Handles processing pasted JD text."""
-    jd_key = "Pasted_JD_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    parsed_data = parse_jd_with_llm(text, jd_title="Pasted Text JD")
-    
-    if "error" in parsed_data:
-        st.session_state.managed_jds[jd_key] = f"AI Parsing Error: {parsed_data['error']}"
-        return False, f"AI Parsing Failed: {parsed_data['error']}"
-        
-    st.session_state.managed_jds[jd_key] = parsed_data
-    st.session_state.managed_jds[jd_key]['raw_text'] = text
-    return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
+    """Handles processing pasted JD text. (No longer called, but retained for clarity)."""
+    # This logic is retained but intentionally not used in the UI
+    pass
 
 def clear_all_jds():
     """Callback to clear all JDs."""
@@ -1295,129 +1266,85 @@ def clear_all_jds():
     st.session_state.selected_jd_key = None
     st.toast("All saved JDs cleared!")
 
-# Modified function: REMOVED RAW TEXT TAB/DISPLAY
 def display_jd_details(key):
-    """Displays the details of the selected JD (Structured Summary ONLY)."""
+    """Displays the details of the selected JD (Structured Summary and Raw Text)."""
     jd_data = st.session_state.managed_jds.get(key)
     
     if not jd_data or isinstance(jd_data, str):
-        st.error(f"Error: JD '{key}' data is corrupted or missing.")
+        st.error(f"Error: JD '{key}' data is corrupted or missing. Data: {jd_data}")
         return
 
-    st.markdown(f"### JD Details: **{jd_data.get('title', 'N/A')}**")
+    st.markdown(f"### JD Details: **{jd_data.get('title', key)}**")
     
-    st.markdown("#### Structured Summary")
-    st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
-    st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+    tab_structured, tab_raw = st.tabs(["Structured Summary", "Raw Text View"])
     
-    st.markdown("#### Required Skills")
-    st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+    with tab_structured:
+        st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
+        st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+        
+        st.markdown("#### Required Skills")
+        skills = jd_data.get('required_skills', ['N/A'])
+        if isinstance(skills, list):
+            st.markdown("* " + "\n* ".join(skills))
+        else:
+            st.markdown(f"Skills data format error: {str(skills)}")
 
-    st.markdown("#### Qualifications")
-    st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
-    
-    st.markdown("#### Responsibilities")
-    st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
-    
+        st.markdown("#### Qualifications")
+        qualifications = jd_data.get('qualifications', ['N/A'])
+        if isinstance(qualifications, list):
+            st.markdown("* " + "\n* ".join(qualifications))
+        else:
+            st.markdown(f"Qualifications data format error: {str(qualifications)}")
+        
+        st.markdown("#### Responsibilities")
+        responsibilities = jd_data.get('responsibilities', ['N/A'])
+        if isinstance(responsibilities, list):
+            st.markdown("* " + "\n* ".join(responsibilities))
+        else:
+            st.markdown(f"Responsibilities data format error: {str(responsibilities)}")
+            
+    with tab_raw:
+        raw_text = jd_data.get('raw_text')
+        if raw_text:
+            st.text_area(f"Raw Extracted Text for {key}", value=raw_text, height=500)
+        else:
+            st.warning("Raw text was not saved for this Job Description.")
+            
     if st.button("⬅️ Hide Details", key="hide_jd_details"):
         st.session_state.selected_jd_key = None
-        # Also unset the filter flag if coming from there
         st.session_state.show_jd_details_from_filter = False
         st.rerun()
 
 def jd_management_tab():
-    st.header("Job Description (JD) Management")
-    st.caption("Upload or paste job descriptions. They will be parsed and saved for matching against your CV.")
+    """
+    REMOVED: The content of the JD management tab has been removed
+    as requested and replaced with a notice and a clear button to clear saved JDs.
+    """
+    st.header("💼 JD Management (Feature Disabled)")
+    st.caption("Job Description uploading and parsing is currently disabled.")
     
-    if not GROQ_API_KEY:
-        st.error("⚠️ GROQ_API_KEY is missing. JD Parsing is disabled. Please set the API key.")
-        return
-        
-    st.markdown("#### 1. Select JD Type (For Categorization)")
-    jd_type = st.radio(
-        "Choose JD scope:",
-        ["Single JD", "Multiple JD"],
-        index=0,
-        horizontal=True,
-        key="jd_type_select"
-    )
+    st.warning("⚠️ **JD Upload/Pasting has been deactivated in this version.**")
+    st.markdown("To use the **Batch JD Match** and **Cover Letter** features, ensure you have already loaded JD data into the session state using a previous version of the application.")
     
     st.markdown("---")
+    st.markdown("#### Saved Job Descriptions in Session State")
     
-    st.markdown("#### 2. Add JD by:")
-    
-    jd_method = st.radio(
-        "Choose Method:",
-        ["Upload File", "Paste Text"], # Removed LinkedIn URL option
-        index=0,
-        horizontal=True,
-        key="jd_method_select"
-    )
-
-    st.markdown("---")
-    
-    # --- File Uploader ---
-    uploaded_jds = None
-    if jd_method == "Upload File":
-        st.markdown("##### Upload JD File(s)")
+    if st.session_state.managed_jds:
+        st.info(f"Currently **{len(st.session_state.managed_jds)}** JDs are loaded for matching.")
         
-        uploaded_jds = st.file_uploader(
-            "Drag and drop file(s) here",
-            type=['pdf', 'txt', 'docx'],
-            accept_multiple_files=(jd_type == "Multiple JD"),
-            key="jd_uploader"
-        )
-        st.caption("Limit 200MB per file • PDF, TXT, DOCX")
-        
-    # --- Text Paster ---
-    pasted_jd_text = ""
-    if jd_method == "Paste Text":
-        st.markdown("##### Paste JD Text")
-        
-        pasted_jd_text = st.text_area(
-            "Paste the job description text here:",
-            height=300,
-            key="jd_paster"
-        )
-    
-    st.markdown("---")
-    
-    # --- New Combined Parse and Load Button ---
-    if GROQ_API_KEY:
-        parse_load_button = st.button(
-            "✨ Parse and Load JD", 
-            type="primary", 
-            use_container_width=True, 
-            key="parse_load_jd_button"
-        )
+        # Show titles of loaded JDs
+        jd_titles = [v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)]
+        if jd_titles:
+            st.markdown("##### Loaded JDs:")
+            st.dataframe(pd.DataFrame({"Title": jd_titles}), use_container_width=True)
+            
+        # Clear button (Retained for management)
+        if st.button("🗑️ Clear All Saved JDs", type="secondary", key="clear_all_jds_button"):
+            clear_all_jds()
+            st.rerun()
     else:
-        parse_load_button = False
-    
-    if parse_load_button:
-        if uploaded_jds:
-            files_to_process = uploaded_jds if isinstance(uploaded_jds, list) else [uploaded_jds]
-            
-            with st.spinner(f"Processing {len(files_to_process)} JD file(s)..."):
-                results = [process_jd_file(f, jd_type) for f in files_to_process]
-            
-            success_count = sum(r[0] for r in results)
-            st.success(f"✅ Finished processing: {success_count} success(es).")
-            for success, message in results:
-                if success:
-                    st.text(message)
-                else:
-                    st.error(message)
+        st.info("No Job Descriptions are currently loaded in the session state.")
 
-        elif pasted_jd_text.strip():
-            with st.spinner("Processing pasted JD text..."):
-                success, message = process_jd_text(pasted_jd_text.strip())
-            
-            if success:
-                st.success(message)
-            else:
-                st.error(message)
-        else:
-            st.warning("Please upload file(s) or paste text content to proceed.")
 
 # -------------------------
 # BATCH JD MATCH TAB CONTENT (UPDATED CV SELECTION & REPORT TABLE)
@@ -1465,7 +1392,7 @@ def batch_jd_match_tab():
     jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
 
     if not jd_keys_valid:
-        st.warning("⚠️ **No valid JDs available.** Please add JDs in the 'JD Management' tab.")
+        st.warning("⚠️ **No valid JDs available.** Please add JDs in the 'JD Management' tab (or ensure they are loaded).")
         selected_jds = []
     else:
         jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
@@ -1802,6 +1729,12 @@ def cover_letter_tab():
 def filter_jd_tab():
     st.header("🔍 Filter Job Descriptions")
     st.caption("Use the filters below to narrow down the saved JDs.")
+    
+    jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
+
+    if not jd_keys_valid:
+        st.warning("⚠️ **No valid JDs available.** Please load JDs into the session state to use this feature.")
+        return
 
     # --- Filter Inputs ---
     with st.form("jd_filter_form"):
@@ -1862,7 +1795,7 @@ def filter_jd_tab():
         
         with st.spinner("Applying filters..."):
             for jd_key, jd_data in valid_jds.items():
-                if isinstance(jd_data, str):
+                if isinstance(jd_data, str) or not isinstance(jd_data, dict):
                     continue # Skip corrupted entries
                 
                 jd_title_lower = jd_data.get('title', '').lower()
@@ -1953,8 +1886,11 @@ def filter_jd_tab():
             cols = st.columns(max_cols) 
 
             for i, key in enumerate(jd_keys):
-                jd_data = st.session_state.managed_jds[key]
-                title = jd_data.get('title', 'N/A')
+                jd_data = st.session_state.managed_jds.get(key)
+                if isinstance(jd_data, dict):
+                    title = jd_data.get('title', 'N/A')
+                else:
+                    title = "Error/Corrupted"
                 
                 with cols[i % max_cols]:
                     with st.container(border=True):
