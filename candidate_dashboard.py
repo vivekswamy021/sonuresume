@@ -587,7 +587,7 @@ def resume_parsing_tab():
             
     st.markdown("---")
     
-    # --- New Section for Displaying Loaded Status & Download Options (MODIFIED) ---
+    # --- Section for Displaying Loaded Status & Download Options (MODIFIED FOR TABS) ---
     st.subheader("3. Current Loaded Candidate Data")
     
     is_data_loaded_and_valid = (
@@ -599,31 +599,32 @@ def resume_parsing_tab():
         
         candidate_name = st.session_state.parsed['name']
         
-        tab_display, tab_download = st.tabs(["📄 Display Parsed Data", "⬇️ Download Formats"])
+        # New tab structure as requested
+        tab_markdown, tab_json, tab_download = st.tabs([
+            "📄 Markdown View", 
+            "💾 JSON View", 
+            "⬇️ PDF/HTML Download"
+        ])
 
-        # --- Display Tab (MODIFIED HERE) ---
-        with tab_display:
+        # --- Markdown View Tab ---
+        with tab_markdown:
             st.markdown(f"**Candidate:** **{candidate_name}**")
             st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
-            
             st.markdown("---")
-            
-            col_markdown, col_json = st.columns(2)
-            
-            with col_markdown:
-                st.markdown("### Markdown Format")
-                st.markdown(st.session_state.full_text)
-                
-            with col_json:
-                st.markdown("### JSON Format")
-                st.json(st.session_state.parsed)
-            
-            st.markdown("---")
+            st.markdown("### Resume Content in Markdown Format")
+            st.markdown(st.session_state.full_text)
             
             if st.session_state.excel_data:
                  st.markdown("### Extracted Spreadsheet Data (if applicable)")
                  st.json(st.session_state.excel_data)
 
+        # --- JSON View Tab ---
+        with tab_json:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
+            st.markdown("---")
+            st.markdown("### Structured Data in JSON Format")
+            st.json(st.session_state.parsed)
 
         # --- Download Tab ---
         with tab_download:
@@ -648,13 +649,13 @@ def resume_parsing_tab():
                 st.markdown(md_link, unsafe_allow_html=True)
 
             with col_html:
-                # Note: The 'html' format here simulates a PDF/HTML viewable download.
                 html_filename = f"{base_filename}.html"
-                html_link = get_download_link(parsed_markdown_data, html_filename, 'html')
+                # This HTML file is a viewable format which simulates a PDF output.
+                html_link = get_download_link(parsed_markdown_data, html_filename, 'html') 
                 st.markdown(html_link, unsafe_allow_html=True)
                 
             st.markdown("---")
-            st.info("The JSON and Markdown downloads contain the structured data extracted by the AI parser. The HTML/PDF link provides a viewable format.")
+            st.info("Download the parsed data in structured JSON, human-readable Markdown, or a viewable HTML format.")
 
 
     else:
