@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from io import BytesIO 
 import time
+import pandas as pd
 
 # --- CONFIGURATION & API SETUP ---
 
@@ -50,18 +51,19 @@ def go_to(page_name):
     st.session_state.page = page_name
 
 def get_file_type(file_name):
-    """Identifies the file type based on its extension."""
+    """Identifies the file type based on its extension, handling common text formats."""
     ext = os.path.splitext(file_name)[1].lower().strip('.')
     if ext == 'pdf': return 'pdf'
     elif ext in ('docx', 'doc'): return 'docx'
-    elif ext in ('txt', 'md', 'markdown'): return 'txt'
+    elif ext in ('txt', 'md', 'markdown', 'rtf'): return 'txt' # Treat RTF and MD as plain text for simple extraction
     elif ext == 'json': return 'json'
-    elif ext in ('xlsx', 'xls'): return 'xlsx'
+    elif ext in ('xlsx', 'xls', 'csv'): return 'excel' # Group CSV and XLSX for pandas handling
     else: return 'unknown' 
 
 def extract_content(file_type, file_content_bytes, file_name):
     """Extracts text content from uploaded file content (bytes)."""
     text = ''
+    excel_data = None
     try:
         if file_type == 'pdf':
             with pdfplumber.open(BytesIO(file_content_bytes)) as pdf:
@@ -76,6 +78,7 @@ def extract_content(file_type, file_content_bytes, file_name):
         
         elif file_type == 'txt':
             try:
+                # Try UTF-8 first, fallback to Latin-1
                 text = file_content_bytes.decode('utf-8')
             except UnicodeDecodeError:
                  text = file_content_bytes.decode('latin-1')
@@ -85,20 +88,39 @@ def extract_content(file_type, file_content_bytes, file_name):
                 data = json.loads(file_content_bytes.decode('utf-8'))
                 text = "--- JSON Content Start ---\n" + json.dumps(data, indent=2) + "\n--- JSON Content End ---"
             except json.JSONDecodeError:
-                return f"[Error] JSON content extraction failed: Invalid JSON format."
+                return f"[Error] JSON content extraction failed: Invalid JSON format.", None
             except UnicodeDecodeError:
-                return f"[Error] JSON content extraction failed: Unicode Decode Error."
+                return f"[Error] JSON content extraction failed: Unicode Decode Error.", None
         
-        elif file_type == 'xlsx':
-            return f"[Error] XLSX/Excel file parsing is complex and requires specific libraries (pandas/openpyxl). Please copy and paste the text content from the file instead."
+        elif file_type == 'excel':
+            try:
+                # Use pandas to read all sheets and convert to a comprehensive text/json structure
+                if file_name.endswith('.csv'):
+                    df = pd.read_csv(BytesIO(file_content_bytes))
+                else: # xlsx, xls
+                    # Read all sheets, combine into a JSON-like string for LLM parsing
+                    xls = pd.ExcelFile(BytesIO(file_content_bytes))
+                    all_sheets_data = {}
+                    for sheet_name in xls.sheet_names:
+                        df = pd.read_excel(xls, sheet_name=sheet_name)
+                        # Convert to JSON string format for easy LLM parsing
+                        all_sheets_data[sheet_name] = df.to_json(orient='records') 
+                        
+                    excel_data = all_sheets_data # Store structured data
+                    text = json.dumps(all_sheets_data, indent=2)
+                    text = f"[EXCEL_CONTENT] The following structured data was extracted:\n{text}"
+                    
+            except Exception as e:
+                return f"[Error] Excel/CSV file parsing failed. Error: {e}", None
 
-        if not text.strip():
-            return f"[Error] {file_type.upper()} content extraction failed or file is empty."
+
+        if not text.strip() and file_type not in ('excel', 'json'): # Allow structured excel data without pure text
+            return f"[Error] {file_type.upper()} content extraction failed or file is empty.", None
         
-        return text
+        return text, excel_data
     
     except Exception as e:
-        return f"[Error] Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}\n{traceback.format_exc()}"
+        return f"[Error] Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}\n{traceback.format_exc()}", None
 
 
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
@@ -156,7 +178,74 @@ def parse_resume_with_llm(text):
         error_message = f"LLM Processing Error: {e.__class__.__name__} - {str(e)}"
         return {"name": "Parsing Error", "error": error_message}
     
+
+# --- NEW HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
+
+def clear_interview_state():
+    """Clears all session state variables related to interview/match sessions."""
+    if 'interview_chat_history' in st.session_state: del st.session_state['interview_chat_history']
+    if 'current_interview_jd' in st.session_state: del st.session_state['current_interview_jd']
+    if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
+    if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     
+    # Also clear CV management form data to load new parsed data cleanly
+    if 'cv_form_data' in st.session_state: del st.session_state['cv_form_data'] 
+
+def parse_and_store_resume(content_source, file_name_key, source_type):
+    """
+    Handles extraction, parsing, and storage of CV data from either a file or pasted text.
+    Returns a dictionary with 'parsed', 'full_text', 'excel_data', and 'name'.
+    """
+    extracted_text = ""
+    excel_data = None
+    file_name = "Pasted_Resume"
+
+    if source_type == 'file':
+        uploaded_file = content_source
+        file_name = uploaded_file.name
+        file_type = get_file_type(file_name)
+        uploaded_file.seek(0) 
+        extracted_text, excel_data = extract_content(file_type, uploaded_file.getvalue(), file_name)
+    elif source_type == 'text':
+        extracted_text = content_source.strip()
+        file_name = "Pasted_Text"
+
+    if extracted_text.startswith("[Error"):
+        return {"error": extracted_text, "full_text": extracted_text, "excel_data": None, "name": file_name}
+    
+    # 2. Call LLM Parser
+    parsed_data = parse_resume_with_llm(extracted_text)
+    
+    # 3. Handle LLM Parsing Error
+    if parsed_data.get('error') is not None and parsed_data.get('error') != "":
+        return {"error": parsed_data['error'], "full_text": extracted_text, "excel_data": excel_data, "name": parsed_data.get('name', file_name)}
+
+    # 4. Create compiled text for download/Q&A
+    compiled_text = ""
+    for k, v in parsed_data.items():
+        if v and k not in ['error']:
+            compiled_text += f"{k.replace('_', ' ').title()}:\n"
+            if isinstance(v, list):
+                compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+            else:
+                compiled_text += str(v) + "\n\n"
+
+    # 5. Store data
+    # st.session_state.parsed = parsed_data # Note: The caller handles state update
+    # st.session_state.full_text = compiled_text
+    
+    # Attempt to set the final name based on LLM output or fallback
+    final_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
+    
+    return {
+        "parsed": parsed_data, 
+        "full_text": compiled_text, 
+        "excel_data": excel_data, 
+        "name": final_name
+    }
+
+# --- END NEW HELPER FUNCTIONS ---
+
 
 @st.cache_data(show_spinner="Analyzing JD for metadata...")
 def extract_jd_metadata(jd_text):
@@ -241,7 +330,7 @@ def evaluate_jd_fit(jd_content, parsed_json):
     --- Section Match Analysis ---
     Skills Match: [{skills}%]
     Experience Match: [{exp}%]
-    Education Match: [{edu}%]
+    Education Match: [{edu}%]%
     
     --- Strengths/Matches ---
     The candidate shows strong proficiency in Python and Streamlit, which aligns well with the required data processing tools. Education is directly relevant.
@@ -253,7 +342,6 @@ def evaluate_jd_fit(jd_content, parsed_json):
     A strong candidate with core skills. Recommend for interview if the experience gap in orchestration tools can be overlooked or quickly trained.
     """
 
-# --- NEW HELPER FUNCTION FOR HTML/PDF Generation ---
 def generate_cv_html(parsed_data):
     """Generates a simple, print-friendly HTML string from parsed data for PDF conversion."""
     
@@ -331,67 +419,125 @@ def generate_cv_html(parsed_data):
 def resume_parsing_tab():
     st.header("📄 Upload/Paste Resume for AI Parsing")
     
-    # File types allowed
-    file_types_allowed = ['pdf', 'docx', 'txt', 'md', 'json', 'xlsx']
+    # 1. Input Method Selection
+    input_method = st.radio(
+        "Select Input Method",
+        ["Upload File", "Paste Text"],
+        key="parsing_input_method"
+    )
     
-    with st.form("resume_parsing_form", clear_on_submit=False):
-        uploaded_file = st.file_uploader(
-            f"Upload Resume File ({', '.join(file_types_allowed)})", 
-            type=file_types_allowed, 
-            accept_multiple_files=False,
-            key="resume_uploader"
+    st.markdown("---")
+
+    # --- A. Upload File Method (UPDATED FILE TYPES HERE) ---
+    if input_method == "Upload File":
+        st.markdown("### 1. Upload Resume File") 
+        
+        # 🚨 File types expanded here
+        file_types = ["pdf", "docx", "txt", "json", "md", "csv", "xlsx", "markdown", "rtf"]
+        uploaded_file = st.file_uploader( 
+            f"Choose {', '.join(file_types)} file", 
+            type=file_types, 
+            accept_multiple_files=False, 
+            key='candidate_file_upload_main'
+        )
+        
+        st.markdown(
+            """
+            <div style='font-size: 10px; color: grey;'>
+            Supported File Types: PDF, DOCX, TXT, JSON, MARKDOWN, CSV, XLSX, RTF
+            </div>
+            """, 
+            unsafe_allow_html=True
         )
         st.markdown("---")
-        st.info("Limit 200MB per file. Allowed types: PDF, DOCX, TXT, MD, JSON, XLSX.")
-        pasted_text = st.text_area("Or Paste Resume Text Here", height=200, key="resume_paster")
-        st.markdown("---")
 
-        if st.form_submit_button("✨ Parse and Structure CV", type="primary", use_container_width=True):
-            extracted_text = ""
-            file_name = "Pasted_Resume"
-            
-            if uploaded_file is not None:
-                file_name = uploaded_file.name
-                file_type = get_file_type(file_name)
-                uploaded_file.seek(0) 
-                extracted_text = extract_content(file_type, uploaded_file.getvalue(), file_name)
-            elif pasted_text.strip():
-                extracted_text = pasted_text.strip()
-            else:
-                st.warning("Please upload a file or paste text content to proceed.")
-                return
+        # Initialize candidate_uploaded_resumes if not present
+        if "candidate_uploaded_resumes" not in st.session_state:
+            st.session_state.candidate_uploaded_resumes = []
+        if "pasted_cv_text" not in st.session_state:
+            st.session_state.pasted_cv_text = ""
 
-            if extracted_text.startswith("[Error"):
-                st.error(f"Text Extraction Failed: {extracted_text}")
-                return
-                
-            with st.spinner("🧠 Sending to Groq LLM for structured parsing..."):
-                parsed_data = parse_resume_with_llm(extracted_text)
+        # --- File Management Logic ---
+        if uploaded_file is not None:
+            # Only store the single uploaded file if it's new
+            if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
+                st.session_state.candidate_uploaded_resumes = [uploaded_file] 
+                st.session_state.pasted_cv_text = "" # Clear pasted text
+                st.toast("Resume file uploaded successfully.")
+        elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
+            # Case where the file is removed from the uploader
+            st.session_state.candidate_uploaded_resumes = []
+            st.session_state.parsed = {}
+            st.session_state.full_text = ""
+            st.session_state.excel_data = None
+            st.toast("Upload cleared.")
             
-            # Check if an error exists AND is not None/empty before failing
-            if parsed_data.get('error') is not None and parsed_data.get('error') != "":
-                st.error(f"AI Parsing Failed: {parsed_data['error']}")
-                return
-
-            candidate_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
-            
-            # Store parsed data and copy to form data state
-            st.session_state.parsed = parsed_data 
-            st.session_state.cv_form_data = parsed_data.copy()
-            
-            # Create a compiled text representation
-            compiled_text = ""
-            for k, v in parsed_data.items():
-                if v and k not in ['error']:
-                    compiled_text += f"{k.replace('_', ' ').title()}:\n"
-                    if isinstance(v, list):
-                        compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+        file_to_parse = st.session_state.candidate_uploaded_resumes[0] if st.session_state.candidate_uploaded_resumes else None
+        
+        st.markdown("### 2. Parse Uploaded File")
+        
+        if file_to_parse:
+            if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True):
+                with st.spinner(f"Parsing {file_to_parse.name}..."):
+                    result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
+                    
+                    if "error" not in result:
+                        st.session_state.parsed = result['parsed']
+                        st.session_state.full_text = result['full_text']
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+                        clear_interview_state()
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                     else:
-                        compiled_text += str(v) + "\n\n"
-            st.session_state.full_text = compiled_text
-            
-            st.success(f"✅ Successfully parsed and loaded CV for **{candidate_name}**! Check the 'CV Management' tab to review/edit.")
-            st.rerun()
+                        st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
+                        st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                        st.session_state.full_text = result['full_text'] or ""
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+        else:
+            st.info("No resume file is currently uploaded. Please upload a file above.")
+
+    # --- B. Paste Text Method (NEW) ---
+    else: # input_method == "Paste Text"
+        st.markdown("### 1. Paste Your CV Text")
+        
+        pasted_text = st.text_area(
+            "Copy and paste your entire CV or resume text here.",
+            value=st.session_state.get('pasted_cv_text', ''),
+            height=300,
+            key='pasted_cv_text_input'
+        )
+        st.session_state.pasted_cv_text = pasted_text # Update session state immediately
+        
+        st.markdown("---")
+        st.markdown("### 2. Parse Pasted Text")
+        
+        if pasted_text.strip():
+            if st.button("Parse and Load Pasted Text", use_container_width=True):
+                with st.spinner("Parsing pasted text..."):
+                    # Clear file upload state
+                    st.session_state.candidate_uploaded_resumes = []
+                    
+                    result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
+                    
+                    if "error" not in result:
+                        st.session_state.parsed = result['parsed']
+                        st.session_state.full_text = result['full_text']
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+                        clear_interview_state()
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
+                    else:
+                        st.error(f"Parsing failed: {result['error']}")
+                        st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                        st.session_state.full_text = result['full_text'] or ""
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+        else:
+            st.info("Please paste your CV text into the box above.")
+
 
 # --- CV MANAGEMENT FUNCTION ---
 def cv_management_tab_content():
@@ -409,7 +555,7 @@ def cv_management_tab_content():
     # Use a specific session state key for form data, initializing from parsed if available
     if "cv_form_data" not in st.session_state:
         # If parsed data exists and has a name, merge it into the default structure
-        if st.session_state.get('parsed', {}).get('name'):
+        if st.session_state.get('parsed', {}).get('name') and 'error' not in st.session_state.parsed:
             # Merge parsed data into a copy of default to ensure all keys exist
             st.session_state.cv_form_data = {**default_parsed, **st.session_state.parsed}
         else:
@@ -554,8 +700,7 @@ def cv_management_tab_content():
         st.session_state.full_text = compiled_text
         
         # 4. Clear related states 
-        if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
-        if 'evaluation_report' in st.session_state: del st.session_state.evaluation_report
+        clear_interview_state()
 
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Match tabs.")
         st.rerun() 
@@ -564,7 +709,7 @@ def cv_management_tab_content():
     st.subheader("2. Loaded CV Data Preview and Download")
     
     # --- TABBED VIEW SECTION (PDF/MARKDOWN/JSON) ---
-    if st.session_state.get('parsed', {}).get('name'):
+    if st.session_state.get('parsed', {}).get('name') and 'error' not in st.session_state.parsed:
         
         # Filter for non-empty/non-list fields before sending to formatter
         filled_data_for_preview = {
@@ -655,7 +800,8 @@ def cv_management_tab_content():
         # --- PDF View (Download) ---
         with tab_pdf:
             st.markdown("### Download CV as HTML (Print-to-PDF)")
-            st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document. ")
+            st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document.")
+            
             
             html_output = generate_cv_html(filled_data_for_preview)
 
@@ -769,7 +915,7 @@ def jd_management_tab_candidate():
                         with st.spinner(f"Extracting content from {file.name}..."):
                             file_type = get_file_type(file.name)
                             file.seek(0)
-                            jd_text = extract_content(file_type, file.getvalue(), file.name)
+                            jd_text, _ = extract_content(file_type, file.getvalue(), file.name)
                             
                         if not jd_text.startswith("[Error"):
                             metadata = extract_jd_metadata(jd_text)
@@ -819,11 +965,11 @@ def jd_batch_match_tab():
     # Determine if a resume/CV is ready
     is_resume_parsed = st.session_state.get('parsed') is not None
     
-    if not is_resume_parsed or not st.session_state.parsed.get('name'):
-        st.warning("Please **upload and parse your resume** in the 'Resume Parsing' tab or **build your CV** in the 'CV Management' tab first.")
+    if not is_resume_parsed or not st.session_state.parsed.get('name') or st.session_state.parsed.get('error'):
+        st.warning("⚠️ Please **upload and parse your resume** in the 'Resume Parsing' tab or **build your CV** in the 'CV Management' tab first.")
         
     elif not st.session_state.candidate_jd_list:
-        st.error("Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
+        st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
     elif isinstance(client, MockGroqClient):
         # We allow mock client to run the mock match for demonstration purposes
@@ -834,10 +980,10 @@ def jd_batch_match_tab():
         try:
              # Just a check to see if the client is valid and not a Mock
             if not isinstance(client, Groq):
-                st.warning("LLM client setup failed. Match analysis may not be accurate or available.")
+                st.warning("⚠️ LLM client setup failed. Match analysis may not be accurate or available.")
         except NameError:
              # Handle case where Groq was never imported/initialized
-             st.warning("LLM client setup failed. Match analysis may not be accurate or available.")
+             st.warning("⚠️ LLM client setup failed. Match analysis may not be accurate or available.")
 
 
     if "candidate_match_results" not in st.session_state:
@@ -932,6 +1078,7 @@ def jd_batch_match_tab():
                 current_score = -1 
                 
                 for i, item in enumerate(results_with_score):
+                    # Only increase rank if score changes (handles ties)
                     if item['numeric_score'] > current_score:
                         current_rank = i + 1
                         current_score = item['numeric_score']
@@ -1001,6 +1148,9 @@ def candidate_dashboard():
     if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "cv_form_data" not in st.session_state: st.session_state.cv_form_data = {} 
+    if "excel_data" not in st.session_state: st.session_state.excel_data = None
+    if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
+    if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
     
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
