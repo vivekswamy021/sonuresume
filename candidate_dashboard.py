@@ -117,12 +117,9 @@ def extract_content(file_type, file_content_bytes, file_name):
         
         elif file_type == 'json':
             try:
-                # FIX: When parsing a JSON file, we pass the content directly as text 
-                # so the LLM can parse the *resume data* from the JSON.
-                data = json.loads(file_content_bytes.decode('utf-8'))
-                text = "--- JSON Content Start ---\n" + json.dumps(data, indent=2) + "\n--- JSON Content End ---"
-            except json.JSONDecodeError:
-                return f"[Error] JSON content extraction failed: Invalid JSON format.", None
+                # FIX: Keep JSON extraction simple for LLM parsing
+                text = file_content_bytes.decode('utf-8')
+                text = "--- JSON Content Start ---\n" + text + "\n--- JSON Content End ---"
             except UnicodeDecodeError:
                 return f"[Error] JSON content extraction failed: Unicode Decode Error.", None
         
@@ -209,7 +206,8 @@ def parse_resume_with_llm(text):
             if key not in parsed_data:
                 parsed_data[key] = [] if key in ["skills", "education", "experience", "certifications", "projects", "strength"] else ""
         
-        parsed_data['error'] = None
+        # FIX: Ensure 'error' is explicitly set to None on success
+        parsed_data['error'] = None 
         return parsed_data
         
     except Exception as e:
@@ -249,6 +247,7 @@ def parse_and_store_resume(content_source, source_type):
         file_name = "Pasted_Text"
 
     if extracted_text.startswith("[Error"):
+        # The extraction itself failed
         return {"error": extracted_text, "full_text": extracted_text, "excel_data": None, "name": file_name}
     
     # 2. Call LLM Parser
@@ -256,6 +255,7 @@ def parse_and_store_resume(content_source, source_type):
     
     # 3. Handle LLM Parsing Error
     if parsed_data.get('error') is not None and parsed_data.get('error') != "":
+        # The LLM parsing itself failed
         return {"error": parsed_data['error'], "full_text": extracted_text, "excel_data": excel_data, "name": parsed_data.get('name', file_name)}
 
     # 4. Create compiled text for download/Q&A
@@ -489,10 +489,12 @@ def resume_parsing_tab():
         # --- File Management Logic ---
         if uploaded_file is not None:
             if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
+                # Update file list if a new file is uploaded
                 st.session_state.candidate_uploaded_resumes = [uploaded_file] 
-                st.session_state.pasted_cv_text = "" # Clear pasted text
+                st.session_state.pasted_cv_text = "" # Clear pasted text state
                 st.toast("Resume file uploaded successfully.")
         elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
+            # Clear state if the file was manually removed
             st.session_state.candidate_uploaded_resumes = []
             st.session_state.parsed = {}
             st.session_state.full_text = ""
@@ -504,17 +506,19 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Uploaded File")
         
         if file_to_parse:
+            # Check if the currently loaded data matches the current file
             is_already_parsed = (
                 st.session_state.get('last_parsed_file_name') == file_to_parse.name and 
                 st.session_state.get('parsed', {}).get('name') is not None and
-                'error' not in st.session_state.get('parsed', {})
+                st.session_state.get('parsed', {}).get('error') is None # Must not have an error
             )
 
             if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True, disabled=is_already_parsed):
                 with st.spinner(f"Parsing {file_to_parse.name}..."):
                     result = parse_and_store_resume(file_to_parse, source_type='file')
                     
-                    if "error" not in result or result['error'] is None:
+                    if result.get('error') is None:
+                        # Success path
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
@@ -523,8 +527,10 @@ def resume_parsing_tab():
                         clear_interview_state()
                         
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        # FIX: Rerun here to instantly update the preview section below
                         st.rerun() 
                     else:
+                        # Error path
                         st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
                         st.session_state.parsed = {"error": result['error'], "name": result['name']}
                         st.session_state.full_text = result['full_text'] or ""
@@ -553,14 +559,22 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Pasted Text")
         
         if pasted_text.strip():
-            if st.button("Parse and Load Pasted Text", use_container_width=True):
+            # Check if the currently loaded data matches the current pasted text
+            is_already_parsed = (
+                st.session_state.get('last_parsed_file_name') == "Pasted_Text" and 
+                st.session_state.get('pasted_cv_text_input', '') == pasted_text and
+                st.session_state.get('parsed', {}).get('error') is None
+            )
+
+            if st.button("Parse and Load Pasted Text", use_container_width=True, disabled=is_already_parsed):
                 with st.spinner("Parsing pasted text..."):
                     # Clear file upload state
                     st.session_state.candidate_uploaded_resumes = []
                     
                     result = parse_and_store_resume(pasted_text, source_type='text')
                     
-                    if "error" not in result or result['error'] is None:
+                    if result.get('error') is None:
+                        # Success path
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
@@ -569,8 +583,10 @@ def resume_parsing_tab():
                         clear_interview_state()
                         
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        # FIX: Rerun here to instantly update the preview section below
                         st.rerun() 
                     else:
+                        # Error path
                         st.error(f"Parsing failed: {result['error']}")
                         st.session_state.parsed = {"error": result['error'], "name": result['name']}
                         st.session_state.full_text = result['full_text'] or ""
@@ -584,8 +600,13 @@ def resume_parsing_tab():
     
     # --- TABBED VIEW SECTION (PDF/MARKDOWN/JSON) ---
     
-    # Check if data is loaded and valid 
-    if st.session_state.get('parsed', {}).get('name') and 'error' not in st.session_state.parsed:
+    # FIX: Robust check for successful loading: Must have a 'name' and 'error' must be None
+    is_data_loaded_and_valid = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+
+    if is_data_loaded_and_valid:
         
         st.markdown(f"**Current Loaded Candidate:** **{st.session_state.parsed['name']}**")
         st.caption(f"Source: {st.session_state.get('last_parsed_file_name', 'Unknown Source')}")
@@ -700,6 +721,7 @@ def resume_parsing_tab():
             )
             
     else:
+        # Display this if data is not loaded or has an error
         st.info("Please parse a resume in the sections above to see the preview and download options.")
 
 
@@ -838,9 +860,13 @@ def jd_batch_match_tab():
     st.markdown("Compare your current resume against all saved job descriptions.")
 
     # Determine if a resume/CV is ready
-    is_resume_parsed = st.session_state.get('parsed') is not None
+    is_resume_parsed = (
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
     
-    if not is_resume_parsed or not st.session_state.parsed.get('name') or st.session_state.parsed.get('error'):
+    if not is_resume_parsed:
         st.warning("⚠️ Please **upload and parse your resume** in the 'Resume Parsing' tab first.")
         
     elif not st.session_state.candidate_jd_list:
@@ -883,7 +909,7 @@ def jd_batch_match_tab():
         if not jds_to_match:
             st.warning("Please select at least one Job Description to run the analysis.")
             
-        elif not is_resume_parsed or not st.session_state.parsed.get('name'):
+        elif not is_resume_parsed:
              st.warning("Please **upload and parse your resume** first.")
 
         else:
@@ -1023,7 +1049,6 @@ def candidate_dashboard():
     
 
     # --- Main Content with Tabs ---
-    # Removed tab_management
     tab_parsing, tab_jd, tab_batch_match = st.tabs(["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match"])
     
     with tab_parsing:
