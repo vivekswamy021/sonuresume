@@ -298,9 +298,12 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
 def get_download_link(data, filename, file_format):
     """
     Generates a base64 encoded download link for the given data and format.
+    
+    This function returns the href data string, which is necessary to inject into 
+    a button's onClick or to use as the download href directly in Streamlit 
+    with st.markdown(unsafe_allow_html=True).
     """
     mime_type = "application/octet-stream"
-    href_label = f"Download {filename}"
     
     if file_format == 'json':
         data_bytes = data.encode('utf-8')
@@ -309,6 +312,7 @@ def get_download_link(data, filename, file_format):
         data_bytes = data.encode('utf-8')
         mime_type = "text/markdown"
     elif file_format == 'html':
+        # Create a simple HTML document for rendering
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -329,7 +333,9 @@ def get_download_link(data, filename, file_format):
         return "" 
 
     b64 = base64.b64encode(data_bytes).decode()
-    return f'<a href="data:{mime_type};base64,{b64}" download="{filename}" target="_blank">{href_label}</a>'
+    
+    # Return the full data URI
+    return f"data:{mime_type};base64,{b64}"
 
 # --- END HELPER FUNCTIONS ---
 
@@ -609,38 +615,105 @@ def resume_parsing_tab():
             st.markdown("### Structured Data in JSON Format")
             st.json(st.session_state.parsed)
 
-        # --- Download Tab ---
+        # --- Download Tab (UPDATED WITH BUTTONS) ---
         with tab_download:
             
             parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
             parsed_markdown_data = st.session_state.full_text
             
-            # This generates the requested filename format: Vivek_Swamy_Parsed_Resume
-            base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume" 
+            base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
             
             st.markdown("### Download Parsed Data")
             
             col_json, col_md, col_html = st.columns(3)
 
+            # --- JSON Download Button ---
             with col_json:
                 json_filename = f"{base_filename}.json"
-                # Download Vivek_Swamy_Parsed_Resume.json
-                st.markdown(f"**{json_filename}**")
-                json_link = get_download_link(parsed_json_data, json_filename, 'json')
-                st.markdown(json_link, unsafe_allow_html=True)
+                json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
+                
+                st.markdown(f"**{json_filename}**", help="Structured data download.")
+                # Inject a button with the download link using HTML
+                st.markdown(
+                    f"""
+                    <a href="{json_data_uri}" download="{json_filename}">
+                        <button style="
+                            background-color: #4CAF50; 
+                            color: white; 
+                            border: none; 
+                            padding: 10px 10px; 
+                            text-align: center; 
+                            text-decoration: none; 
+                            display: inline-block; 
+                            font-size: 14px; 
+                            margin: 4px 2px; 
+                            cursor: pointer; 
+                            border-radius: 4px;
+                            width: 100%;">
+                            💾 Download JSON (.json)
+                        </button>
+                    </a>
+                    """, 
+                    unsafe_allow_html=True
+                )
             
+            # --- Markdown Download Button ---
             with col_md:
                 md_filename = f"{base_filename}.md"
-                # Download Vivek_Swamy_Parsed_Resume.md
-                st.markdown(f"**{md_filename}**")
-                md_link = get_download_link(parsed_markdown_data, md_filename, 'markdown')
-                st.markdown(md_link, unsafe_allow_html=True)
+                md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
+                
+                st.markdown(f"**{md_filename}**", help="Human-readable format download.")
+                st.markdown(
+                    f"""
+                    <a href="{md_data_uri}" download="{md_filename}">
+                        <button style="
+                            background-color: #008CBA; 
+                            color: white; 
+                            border: none; 
+                            padding: 10px 10px; 
+                            text-align: center; 
+                            text-decoration: none; 
+                            display: inline-block; 
+                            font-size: 14px; 
+                            margin: 4px 2px; 
+                            cursor: pointer; 
+                            border-radius: 4px;
+                            width: 100%;">
+                            ⬇️ Download Markdown (.md)
+                        </button>
+                    </a>
+                    """, 
+                    unsafe_allow_html=True # Simulates the button from image_60d371.png
+                )
 
+            # --- HTML/PDF Simulated Download Button ---
             with col_html:
                 html_filename = f"{base_filename}.html"
-                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**")
-                html_link = get_download_link(parsed_markdown_data, html_filename, 'html') 
-                st.markdown(html_link, unsafe_allow_html=True)
+                html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html') 
+                
+                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**", help="Viewable document format.")
+                st.markdown(
+                    f"""
+                    <a href="{html_data_uri}" download="{html_filename}">
+                        <button style="
+                            background-color: #f44336; 
+                            color: white; 
+                            border: none; 
+                            padding: 10px 10px; 
+                            text-align: center; 
+                            text-decoration: none; 
+                            display: inline-block; 
+                            font-size: 14px; 
+                            margin: 4px 2px; 
+                            cursor: pointer; 
+                            border-radius: 4px;
+                            width: 100%;">
+                            📄 Download HTML (PDF Sim.)
+                        </button>
+                    </a>
+                    """, 
+                    unsafe_allow_html=True
+                )
                 
             st.markdown("---")
             st.info("Download the parsed data in structured JSON, human-readable Markdown, or a viewable HTML format.")
@@ -662,8 +735,10 @@ def jd_management_tab_candidate():
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     st.markdown("---")
     
+    # JD Type Radio Buttons
     jd_type = st.radio("Select JD Type", ["Single JD", "Multiple JD"], key="jd_type_candidate", index=0)
     st.markdown("### Add JD by:")
+    # Method Radio Buttons
     method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method_candidate", index=0) 
     st.markdown("---")
 
@@ -717,6 +792,7 @@ def jd_management_tab_candidate():
     # --- Upload File Section ---
     elif method == "Upload File":
         jd_file_types = ["pdf", "txt", "docx", "md", "json"]
+        # File uploader component
         uploaded_files = st.file_uploader(
             f"Upload JD file(s) ({', '.join(jd_file_types)})",
             type=jd_file_types,
@@ -1121,6 +1197,7 @@ def candidate_dashboard():
     
 
     # --- Main Content with Tabs ---
+    # Tabs structure is based on image 2 (Screenshot 2025-11-17 200009.png)
     tab_parsing, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
         ["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
     )
