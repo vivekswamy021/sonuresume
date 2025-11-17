@@ -324,6 +324,8 @@ def get_download_link(data, filename, file_format):
         mime_type = "text/markdown"
     elif file_format == 'html':
         # Create a simple HTML document for rendering
+        # Note: PDF is simulated by using a downloadable HTML file with a pre tag. 
+        # A true PDF generation would require external libraries like ReportLab or FPDF.
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -599,18 +601,27 @@ def resume_parsing_tab():
         
         tab_display, tab_download = st.tabs(["📄 Display Parsed Data", "⬇️ Download Formats"])
 
-        # --- Display Tab ---
+        # --- Display Tab (MODIFIED HERE) ---
         with tab_display:
             st.markdown(f"**Candidate:** **{candidate_name}**")
             st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
             
             st.markdown("---")
-            st.markdown("### Parsed Data (Markdown Format)")
-            st.markdown(st.session_state.full_text)
+            
+            col_markdown, col_json = st.columns(2)
+            
+            with col_markdown:
+                st.markdown("### Markdown Format")
+                st.markdown(st.session_state.full_text)
+                
+            with col_json:
+                st.markdown("### JSON Format")
+                st.json(st.session_state.parsed)
+            
+            st.markdown("---")
             
             if st.session_state.excel_data:
-                 st.markdown("---")
-                 st.markdown("### Extracted Spreadsheet Data")
+                 st.markdown("### Extracted Spreadsheet Data (if applicable)")
                  st.json(st.session_state.excel_data)
 
 
@@ -637,6 +648,7 @@ def resume_parsing_tab():
                 st.markdown(md_link, unsafe_allow_html=True)
 
             with col_html:
+                # Note: The 'html' format here simulates a PDF/HTML viewable download.
                 html_filename = f"{base_filename}.html"
                 html_link = get_download_link(parsed_markdown_data, html_filename, 'html')
                 st.markdown(html_link, unsafe_allow_html=True)
