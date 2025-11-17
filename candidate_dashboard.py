@@ -33,7 +33,6 @@ except (ImportError, ValueError) as e:
                     return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Mock Candidate", "summary": "Mock summary for testing.", "skills": ["Python", "Streamlit"]}'}}]})()
             return Completions()
     client = MockGroqClient()
-    # st.info(f"AI functions are running in MOCK mode because Groq setup failed: {e}") # Suppress this in the final app body
 
 # --- Utility Functions ---
 
@@ -200,10 +199,10 @@ def save_form_cv():
     
     cv_key_name = f"{current_form_name.replace(' ', '_')}_Manual_CV_{datetime.now().strftime('%Y%m%d-%H%M')}"
 
-    # Simplified CV data structure
+    # Simplified CV data structure - FIX: Referencing the corrected key
     final_cv_data = {
         "name": current_form_name,
-        "summary": st.session_state.get('form_summary_value', '').strip(),
+        "summary": st.session_state.get('form_summary_value_input', '').strip(), # Corrected key usage
         "skills": [s.strip() for s in st.session_state.get('form_skills_value', '').split('\n') if s.strip()],
         # ... other fields
     }
@@ -225,7 +224,6 @@ def generate_and_display_cv(cv_name):
 
 def resume_parsing_tab():
     st.header("📄 Upload/Paste Resume for AI Parsing")
-    # ... (content from previous implementation)
     
     with st.form("resume_parsing_form", clear_on_submit=False):
         uploaded_file = st.file_uploader(
@@ -268,7 +266,7 @@ def resume_parsing_tab():
             
             st.session_state.managed_cvs[cv_key_name] = parsed_data
             st.session_state.show_cv_output = cv_key_name
-            st.session_state.parsed = parsed_data # **CRITICAL: Store parsed data for match analysis**
+            st.session_state.parsed = parsed_data # CRITICAL: Store parsed data for match analysis
             
             st.success(f"✅ Successfully parsed and structured CV for **{candidate_name}**!")
             st.rerun()
@@ -278,7 +276,10 @@ def cv_form_content():
     st.header("📝 CV Management (Manual Form)")
     st.info("Use this form to manually enter or edit structured CV details.")
     st.text_input("Full Name", key="form_name_value")
-    st.text_area("Career Summary", key="form_summary_value", key="form_summary_value_input")
+    
+    # FIX APPLIED HERE: Removed repeated 'key' argument. Used the intended key 'form_summary_value_input'.
+    st.text_area("Career Summary", key="form_summary_value_input") 
+    
     st.text_area("Skills (One per line)", key="form_skills_value", help="Enter core skills, one per line.")
     st.button("💾 **Save CV Details**", type="primary", use_container_width=True, on_click=save_form_cv)
     st.markdown("---")
@@ -304,7 +305,6 @@ def jd_management_tab_candidate():
         with st.form("jd_url_form_candidate", clear_on_submit=True):
             url_list = st.text_area("Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate")
             if st.form_submit_button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
-                # ... (logic remains the same, includes st.rerun())
                 if url_list:
                     urls = [u.strip() for u in url_list.split(",")] if jd_type == "Multiple JD" else [url_list.strip()]
                     count = 0
@@ -333,7 +333,6 @@ def jd_management_tab_candidate():
         with st.form("jd_paste_form_candidate", clear_on_submit=True):
             text_list = st.text_area("Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here", key="text_list_candidate")
             if st.form_submit_button("Add JD(s) from Text", key="add_jd_text_btn_candidate"):
-                # ... (logic remains the same, includes st.rerun())
                 if text_list:
                     texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
                     count = 0
@@ -596,12 +595,12 @@ def candidate_dashboard():
     
     # Initialize basic form states (required for save_form_cv to work)
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
-    if "form_summary_value" not in st.session_state: st.session_state.form_summary_value = ""
+    # Only need to check for one key, the other was the issue.
+    if "form_summary_value_input" not in st.session_state: st.session_state.form_summary_value_input = "" 
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
 
 
     # --- Main Content with Tabs ---
-    # Tab Order: Resume Parsing, CV Management, JD Management, Batch Match (NEW)
     tab_parsing, tab_management, tab_jd, tab_batch_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "📚 JD Management", "🎯 Batch JD Match"])
     
     with tab_parsing:
@@ -614,7 +613,7 @@ def candidate_dashboard():
         jd_management_tab_candidate()
         
     with tab_batch_match:
-        jd_batch_match_tab() # The new tab function
+        jd_batch_match_tab()
 
 
 # -------------------------
