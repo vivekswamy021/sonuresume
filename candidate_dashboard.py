@@ -553,7 +553,7 @@ def extract_jd_from_linkedin_url(url):
     ---
     """
     
-# --- REPLACED FUNCTION WITH LLM-DEPENDENT VERSION ---
+# --- EVALUATE JD FIT FUNCTION (LLM-DEPENDENT) ---
 def evaluate_jd_fit(job_description, parsed_json):
     """
     **NEW IMPLEMENTATION**: Evaluates how well a resume fits a given job description, 
@@ -624,7 +624,7 @@ def evaluate_jd_fit(job_description, parsed_json):
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}"
-# --- END REPLACED FUNCTION ---
+# --- END EVALUATE JD FIT FUNCTION ---
 
 # --- Tab Content Functions ---
     
@@ -897,13 +897,19 @@ def jd_batch_match_tab():
         st.session_state.parsed.get('error') is None
     )
     
+    # Check if we are running in Mock Mode
+    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    
     if not is_resume_parsed:
         st.warning("⚠️ Please **upload and parse your resume** in the 'Resume Parsing' tab first.")
         
     elif not st.session_state.candidate_jd_list:
         st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
-    elif isinstance(client, MockGroqClient) or not GROQ_API_KEY:
+    elif not GROQ_API_KEY and not is_mock_mode:
+        st.error("Cannot use JD Match: GROQ_API_KEY is not configured.")
+        
+    elif is_mock_mode:
         st.info("ℹ️ Running in **Mock LLM Mode** for fit evaluation. Results are simulated for consistency, but a valid GROQ_API_KEY is recommended for real AI analysis.")
         
     else:
@@ -1002,7 +1008,7 @@ def jd_batch_match_tab():
                             "full_analysis": f"Error running analysis for {jd_name}: {e}\n{traceback.format_exc()}"
                         })
                         
-                # --- NEW RANKING LOGIC ---
+                # --- NEW RANKING LOGIC (Handles ties correctly) ---
                 results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
                 
                 current_rank = 1
@@ -1017,6 +1023,10 @@ def jd_batch_match_tab():
                         current_score = item['numeric_score']
                         
                     item['rank'] = current_rank
+                    
+                    # Clean up the temp score field
+                    if 'numeric_score' in item:
+                         del item['numeric_score'] 
                     
                 st.session_state.candidate_match_results = results_with_score
                 # --- END NEW RANKING LOGIC ---
@@ -1053,8 +1063,10 @@ def jd_batch_match_tab():
         st.markdown("##### Detailed Reports")
         for item in results_df:
             rank_display = f"Rank {item.get('rank', 'N/A')} | "
+            # Ensure the full analysis is displayed with markdown formatting
             header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
             with st.expander(header_text):
+                # Use st.code or st.markdown depending on how the LLM formatted the output
                 st.code(item['full_analysis'], language='markdown')
 
 
