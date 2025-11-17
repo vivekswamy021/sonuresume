@@ -110,7 +110,7 @@ def extract_content(file_type, file_content_bytes, file_name):
         
         elif file_type == 'json':
             try:
-                # FIX: Wrap JSON content so LLM parsing function can detect and use it
+                # Wrap JSON content so LLM parsing function can detect and use it
                 text = file_content_bytes.decode('utf-8')
                 text = "--- JSON Content Start ---\n" + text + "\n--- JSON Content End ---"
             except UnicodeDecodeError:
@@ -153,7 +153,7 @@ def parse_resume_with_llm(text):
         return {"name": "Parsing Error", "error": text}
 
     # Helper function to get a fallback name
-    def get_fallback_name(text_input):
+    def get_fallback_name():
         name = "Parsed Candidate"
         if st.session_state.get('last_parsed_file_name'):
             # Use filename, strip extension, and replace underscores/dashes with spaces
@@ -162,9 +162,9 @@ def parse_resume_with_llm(text):
             if name == "Pasted Text": name = "Pasted Resume Data"
         return name if name else "Parsed Candidate"
     
-    candidate_name = get_fallback_name(text)
+    candidate_name = get_fallback_name()
     
-    # 2. FIX: Check for and parse direct JSON content (for JSON file uploads)
+    # 2. Check for and parse direct JSON content (for JSON file uploads)
     json_match = re.search(r'--- JSON Content Start ---\s*(.*?)\s*--- JSON Content End ---', text, re.DOTALL)
     
     if json_match:
@@ -233,7 +233,7 @@ def parse_resume_with_llm(text):
         return {"name": candidate_name, "error": error_message} 
     
 
-# --- NEW HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
+# --- HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
 
 def clear_interview_state():
     """Clears all session state variables related to interview/match sessions."""
@@ -296,7 +296,7 @@ def parse_and_store_resume(content_source, source_type):
         "name": final_name
     }
 
-# --- END NEW HELPER FUNCTIONS ---
+# --- END HELPER FUNCTIONS ---
 
 
 @st.cache_data(show_spinner="Analyzing JD for metadata...")
@@ -394,74 +394,6 @@ def evaluate_jd_fit(jd_content, parsed_json):
     A strong candidate with core skills. Recommend for interview if the experience gap in orchestration tools can be overlooked or quickly trained.
     """
 
-# --- HTML Generation for Preview/Download (Kept for Resume Parsing Tab) ---
-def generate_cv_html(parsed_data):
-    """Generates a simple, print-friendly HTML string from parsed data for PDF conversion."""
-    
-    css = """
-    <style>
-        @page { size: A4; margin: 1cm; }
-        body { font-family: 'Arial', sans-serif; line-height: 1.5; margin: 0; padding: 0; font-size: 10pt; }
-        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-        .header h1 { margin: 0; font-size: 1.8em; }
-        .contact-info { display: flex; justify-content: center; font-size: 0.8em; color: #555; }
-        .contact-info span { margin: 0 8px; }
-        .section { margin-bottom: 15px; page-break-inside: avoid; }
-        .section h2 { border-bottom: 1px solid #999; padding-bottom: 3px; margin-bottom: 8px; font-size: 1.1em; text-transform: uppercase; color: #333; }
-        .item-list ul { list-style-type: disc; margin-left: 20px; padding-left: 0; margin-top: 0; }
-        .item-list ul li { margin-bottom: 3px; }
-        .item-list p { margin: 3px 0 8px 0; }
-        a { color: #0056b3; text-decoration: none; }
-    </style>
-    """
-    
-    html_content = f"<html><head>{css}<title>{parsed_data.get('name', 'CV')}</title></head><body>"
-    
-    # 1. Header and Contact Info
-    html_content += '<div class="header">'
-    html_content += f"<h1>{parsed_data.get('name', 'Candidate Name')}</h1>"
-    
-    contact_parts = []
-    if parsed_data.get('email'): contact_parts.append(f"<span>📧 {parsed_data['email']}</span>")
-    if parsed_data.get('phone'): contact_parts.append(f"<span>📱 {parsed_data['phone']}</span>")
-    
-    linkedin_url = parsed_data.get('linkedin', '')
-    github_url = parsed_data.get('github', '')
-    
-    if linkedin_url: contact_parts.append(f"<span>🔗 <a href='{linkedin_url}'>{linkedin_url.split('/')[-1] or 'LinkedIn'}</a></span>")
-    if github_url: contact_parts.append(f"<span>💻 <a href='{github_url}'>{github_url.split('/')[-1] or 'GitHub'}</a></span>")
-    
-    html_content += f'<div class="contact-info">{" | ".join(contact_parts)}</div>'
-    html_content += '</div>'
-    
-    # 2. Sections
-    section_order = ['personal_details', 'experience', 'projects', 'education', 'certifications', 'skills', 'strength']
-    
-    for k in section_order:
-        v = parsed_data.get(k)
-        
-        if k in ['name', 'email', 'phone', 'linkedin', 'github', 'error']: continue 
-
-        if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
-            
-            html_content += f'<div class="section"><h2>{k.replace("_", " ").title()}</h2>'
-            html_content += '<div class="item-list">'
-            
-            if k == 'personal_details' and isinstance(v, str):
-                html_content += f"<p>{v}</p>"
-            elif isinstance(v, list):
-                html_content += '<ul>'
-                for item in v:
-                    if item: 
-                        html_content += f"<li>{item}</li>"
-                html_content += '</ul>'
-            else:
-                html_content += f"<p>{v}</p>"
-                
-            html_content += '</div></div>'
-
-    html_content += '</body></html>'
-    return html_content
 
 # --- Tab Content Functions ---
     
@@ -597,9 +529,9 @@ def resume_parsing_tab():
             st.info("Please paste your CV text into the box above.")
             
     st.markdown("---")
-    st.subheader("3. Loaded CV Data Preview and Download")
     
-    # --- TABBED VIEW SECTION (PDF/MARKDOWN/JSON) ---
+    # --- New Section for Displaying Loaded Status ---
+    st.subheader("3. Current Loaded Candidate Status")
     
     is_data_loaded_and_valid = (
         st.session_state.get('parsed', {}).get('name') is not None and 
@@ -607,128 +539,16 @@ def resume_parsing_tab():
     )
 
     if is_data_loaded_and_valid:
-        
-        st.markdown(f"**Current Loaded Candidate:** **{st.session_state.parsed['name']}**")
+        st.markdown(f"**Status:** ✅ **Loaded**")
+        st.markdown(f"**Candidate:** **{st.session_state.parsed['name']}**")
         st.caption(f"Source: {st.session_state.get('last_parsed_file_name', 'Unknown Source')}")
-        
-        filled_data_for_preview = {
-            k: v for k, v in st.session_state.parsed.items() 
-            if v and k not in ['error'] and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
-        }
-        
-        # Helper function for Markdown formatting
-        def format_parsed_json_to_markdown(parsed_data):
-            """Formats the parsed JSON data into a clean, CV-like Markdown structure."""
-            md = ""
-            
-            # --- Personal Info (Header) ---
-            if parsed_data.get('name'):
-                md += f"# **{parsed_data['name']}**\n\n"
-            
-            contact_info = []
-            if parsed_data.get('email'): contact_info.append(parsed_data['email'])
-            if parsed_data.get('phone'): contact_info.append(parsed_data['phone'])
-            
-            linkedin_url = parsed_data.get('linkedin', '')
-            github_url = parsed_data.get('github', '')
-            if linkedin_url and (linkedin_url.startswith('http') or linkedin_url.startswith('www')): 
-                contact_info.append(f"[LinkedIn]({linkedin_url})")
-            if github_url and (github_url.startswith('http') or github_url.startswith('www')): 
-                contact_info.append(f"[GitHub]({github_url})")
-            
-            if contact_info:
-                md += f"| {' | '.join(contact_info)} |\n"
-                md += "| " + " | ".join(["---"] * len(contact_info)) + " |\n\n"
-            
-            # --- Section Content ---
-            section_order = ['personal_details', 'experience', 'projects', 'education', 'certifications', 'skills', 'strength']
-            
-            for k in section_order:
-                v = parsed_data.get(k)
-                
-                if k in ['name', 'email', 'phone', 'linkedin', 'github', 'error']: continue 
-
-                if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
-                    
-                    md += f"## **{k.replace('_', ' ').upper()}**\n"
-                    md += "---\n"
-                    
-                    if k == 'personal_details' and isinstance(v, str):
-                        md += f"{v}\n\n"
-                    elif isinstance(v, list):
-                        for item in v:
-                            if item: 
-                                md += f"- {item}\n"
-                        md += "\n"
-                    else:
-                        md += f"{v}\n\n"
-            return md
-
-
-        tab_markdown, tab_json, tab_pdf = st.tabs(["📝 Markdown View", "💾 JSON View", "⬇️ PDF/HTML Download"])
-
-        # --- Markdown View ---
-        with tab_markdown:
-            cv_markdown_preview = format_parsed_json_to_markdown(filled_data_for_preview)
-            st.markdown(cv_markdown_preview)
-
-            # Markdown Download Button
-            st.download_button(
-                label="⬇️ Download CV as Markdown (.md)",
-                data=cv_markdown_preview,
-                file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_CV_Document.md",
-                mime="text/markdown",
-                key="download_cv_markdown_final"
-            )
-
-
-        # --- JSON View ---
-        with tab_json:
-            st.json(st.session_state.parsed)
-            st.info("This is the raw, structured data used by the AI tools.")
-
-            # JSON Download Button
-            json_output = json.dumps(st.session_state.parsed, indent=2)
-            st.download_button(
-                label="⬇️ Download CV as JSON File",
-                data=json_output,
-                file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_CV_Data.json",
-                mime="application/json",
-                key="download_cv_json_final"
-            )
-
-
-        # --- PDF View (Download) ---
-        with tab_pdf:
-            st.markdown("### Download CV as HTML (Print-to-PDF)")
-            st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document.")
-            st.markdown("")
-            
-            html_output = generate_cv_html(filled_data_for_preview)
-
-            st.download_button(
-                label="⬇️ Download CV as Print-Ready HTML File (for PDF conversion)",
-                data=html_output,
-                file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_CV_Document.html",
-                mime="text/html",
-                key="download_cv_html"
-            )
-            
-            st.markdown("---")
-            st.markdown("### Raw Text Data Download (for utility)")
-            st.download_button(
-                label="⬇️ Download All CV Data as Raw Text (.txt)",
-                data=st.session_state.full_text,
-                file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_Raw_Data.txt",
-                mime="text/plain",
-                key="download_cv_txt_final"
-            )
-            
+        st.info("The parsed CV data is ready and available for matching in the **Batch JD Match** tab.")
     else:
-        # Display this if data is not loaded or has an error
-        st.info("Please parse a resume in the sections above to see the preview and download options.")
+        st.warning(f"**Status:** ❌ **Not Loaded**")
+        st.info("Please parse a resume in the sections above to continue to the **JD Match** tab.")
 
-
+# --- JD Management Tab Function ---
+        
 def jd_management_tab_candidate():
     """JD Management Tab."""
     st.header("📚 Manage Job Descriptions for Matching")
