@@ -73,10 +73,10 @@ class MockGroqClient:
                     # SIMULATED FIT LOGIC (Fallback for when the LLM-dependent function tries to run without a key)
                     
                     # Simple heuristic mock score based on role title in the prompt
-                    jd_role_match = re.search(r'Simulated JD for:\s*([A-Za-z\s/-]+)', prompt_content)
-                    jd_role = jd_role_match.group(1).lower() if jd_role_match else "default"
+                    jd_role_match = re.search(r'(?:Role|Engineer|Scientist)[:\s]+([\w\s/-]+)', prompt_content)
+                    jd_role = jd_role_match.group(1).lower().strip() if jd_role_match else "default"
                     
-                    if 'ai/ml engineer' in jd_role or 'mlops' in jd_role:
+                    if 'ai/ml' in jd_role or 'mlops' in jd_role:
                         score = 8
                     elif 'data scientist' in jd_role:
                         score = 7
@@ -481,7 +481,7 @@ def extract_jd_metadata(jd_text):
         return {"role": "Error", "key_skills": ["Error"], "job_type": "Error"}
     
     # Simple heuristic mock
-    role_match = re.search(r'(?:Role|Position|Title|Engineer)[:\s]+([\w\s/-]+)', jd_text, re.IGNORECASE)
+    role_match = re.search(r'(?:Role|Position|Title|Engineer|Scientist)[:\s\n]+([\w\s/-]+)', jd_text, re.IGNORECASE)
     role = role_match.group(1).strip() if role_match else "Software Engineer (Mock)"
     
     # Extract Skills from JD content - ENHANCED SKILL LIST
@@ -556,17 +556,14 @@ def extract_jd_from_linkedin_url(url):
 # --- EVALUATE JD FIT FUNCTION (LLM-DEPENDENT) ---
 def evaluate_jd_fit(job_description, parsed_json):
     """
-    **NEW IMPLEMENTATION**: Evaluates how well a resume fits a given job description, 
+    Evaluates how well a resume fits a given job description, 
     including section-wise scores, by calling the Groq LLM API.
-    
-    NOTE: This version requires a valid GROQ_API_KEY.
     """
     # Use the client object, which can be the real Groq client or the MockGroqClient
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
          # In mock mode, use the special mock implementation for fit evaluation
-         # This relies on the enhanced MockGroqClient.chat().create()
          response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": f"Evaluate how well the following resume content matches the provided job description: {job_description}"}])
          return response.choices[0].message.content.strip()
 
@@ -623,7 +620,9 @@ def evaluate_jd_fit(job_description, parsed_json):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}"
+        # ⚠️ Critical: Return the full error and the traceback for better logging
+        error_output = f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
+        return error_output
 # --- END EVALUATE JD FIT FUNCTION ---
 
 # --- Tab Content Functions ---
@@ -962,8 +961,9 @@ def jd_batch_match_tab():
                         # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
-                        # --- Extract Score Data from LLM/Mock Output using Regex ---
-                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?(\d+)\s*/10', fit_output, re.IGNORECASE)
+                        # --- Extract Score Data from LLM/Mock Output using Regex (Enhanced Robustness) ---
+                        # Matches score/10 with optional brackets and flexible whitespace
+                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
                         section_analysis_match = re.search(
                             r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
                             fit_output, re.DOTALL
@@ -973,10 +973,11 @@ def jd_batch_match_tab():
                         
                         if section_analysis_match:
                             section_text = section_analysis_match.group(1)
-                            # Using optional brackets '\[?(\d+)%\]?' to handle the user's specified format precisely
-                            skills_match = re.search(r'Skills Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
-                            experience_match = re.search(r'Experience Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
-                            education_match = re.search(r'Education Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
+                            
+                            # Matches percentage with optional brackets and flexible whitespace
+                            skills_match = re.search(r'Skills Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
                             
                             if skills_match: skills_percent = skills_match.group(1)
                             if experience_match: experience_percent = experience_match.group(1)
@@ -987,6 +988,7 @@ def jd_batch_match_tab():
                         # Check for API/Mock errors
                         if "AI Evaluation Error" in fit_output or "Cannot evaluate" in fit_output:
                             overall_score = "Error"
+                        # --- End Score Extraction ---
 
                         results_with_score.append({
                             "jd_name": jd_name,
@@ -998,6 +1000,7 @@ def jd_batch_match_tab():
                             "full_analysis": fit_output
                         })
                     except Exception as e:
+                        # This catches parsing errors if the LLM output is malformed even if the API call succeeded.
                         results_with_score.append({
                             "jd_name": jd_name,
                             "overall_score": "Error",
@@ -1005,7 +1008,7 @@ def jd_batch_match_tab():
                             "skills_percent": "Error",
                             "experience_percent": "Error", 
                             "education_percent": "Error", 
-                            "full_analysis": f"Error running analysis for {jd_name}: {e}\n{traceback.format_exc()}"
+                            "full_analysis": f"Error parsing LLM analysis for {jd_name}: {e}\nFull LLM Output:\n---\n{fit_output}\n---"
                         })
                         
                 # --- NEW RANKING LOGIC (Handles ties correctly) ---
@@ -1066,7 +1069,7 @@ def jd_batch_match_tab():
             # Ensure the full analysis is displayed with markdown formatting
             header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
             with st.expander(header_text):
-                # Use st.code or st.markdown depending on how the LLM formatted the output
+                # Use st.code to display the LLM output with good formatting
                 st.code(item['full_analysis'], language='markdown')
 
 
