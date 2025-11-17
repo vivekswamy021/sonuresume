@@ -188,10 +188,9 @@ def clear_interview_state():
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     
-    # Do NOT clear 'cv_form_data' here. Clearing it here would prevent the fix from working.
-    # The fix is to update it *when* the CV Management tab loads. 
+    # Do NOT clear 'cv_form_data' here. 
 
-def parse_and_store_resume(content_source, file_name_key, source_type):
+def parse_and_store_resume(content_source, source_type):
     """
     Handles extraction, parsing, and storage of CV data from either a file or pasted text.
     Returns a dictionary with 'parsed', 'full_text', 'excel_data', and 'name'.
@@ -475,25 +474,31 @@ def resume_parsing_tab():
         if file_to_parse:
             if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True):
                 with st.spinner(f"Parsing {file_to_parse.name}..."):
-                    result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
+                    # NOTE: Removed 'file_name_key' argument from function call
+                    result = parse_and_store_resume(file_to_parse, source_type='file')
                     
                     if "error" not in result:
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
                         st.session_state.parsed['name'] = result['name'] 
+                        
                         clear_interview_state()
-                        # --- FIX APPLIED HERE: Synchronize cv_form_data on successful parse ---
+                        
+                        # --- FIX: Synchronize form data AND set a flag ---
                         st.session_state.cv_form_data = {**default_cv_template(), **st.session_state.parsed}
+                        st.session_state.data_source = 'parsed_file' # Set flag
                         # --- END FIX ---
-                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**. Data is ready in CV Management.")
                         st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                     else:
                         st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
                         st.session_state.parsed = {"error": result['error'], "name": result['name']}
                         st.session_state.full_text = result['full_text'] or ""
                         st.session_state.excel_data = result['excel_data'] 
-                        st.session_state.parsed['name'] = result['name'] 
+                        st.session_state.parsed['name'] = result['name']
+                        st.session_state.data_source = 'error'
         else:
             st.info("No resume file is currently uploaded. Please upload a file above.")
 
@@ -518,25 +523,31 @@ def resume_parsing_tab():
                     # Clear file upload state
                     st.session_state.candidate_uploaded_resumes = []
                     
-                    result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
+                    # NOTE: Removed 'file_name_key' argument from function call
+                    result = parse_and_store_resume(pasted_text, source_type='text')
                     
                     if "error" not in result:
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
                         st.session_state.parsed['name'] = result['name'] 
+                        
                         clear_interview_state()
-                        # --- FIX APPLIED HERE: Synchronize cv_form_data on successful parse ---
+                        
+                        # --- FIX: Synchronize form data AND set a flag ---
                         st.session_state.cv_form_data = {**default_cv_template(), **st.session_state.parsed}
+                        st.session_state.data_source = 'parsed_text' # Set flag
                         # --- END FIX ---
-                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**. Data is ready in CV Management.")
                         st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                     else:
                         st.error(f"Parsing failed: {result['error']}")
                         st.session_state.parsed = {"error": result['error'], "name": result['name']}
                         st.session_state.full_text = result['full_text'] or ""
                         st.session_state.excel_data = result['excel_data'] 
-                        st.session_state.parsed['name'] = result['name'] 
+                        st.session_state.parsed['name'] = result['name']
+                        st.session_state.data_source = 'error'
         else:
             st.info("Please paste your CV text into the box above.")
 
@@ -548,44 +559,48 @@ def default_cv_template():
         "projects": [], "strength": [], "personal_details": ""
     }
 
-# --- CV MANAGEMENT FUNCTION ---
+# --- CV MANAGEMENT FUNCTION (FIXED) ---
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("Fill out the details below to generate a parsed CV that can be used immediately for matching and interview prep, or start by parsing a file in the 'Resume Parsing' tab.")
 
-    # --- FIX APPLIED HERE: Synchronization Logic ---
+    # --- FIX APPLIED HERE: Robust Synchronization Logic ---
     default_parsed = default_cv_template()
     
-    # Initialize the form state if it doesn't exist
+    # 1. Initialize the form state if it doesn't exist
     if "cv_form_data" not in st.session_state:
         st.session_state.cv_form_data = default_parsed.copy()
         
-    # Synchronization check: If a successful parse happened, overwrite the form data.
-    # This ensures that when the user switches to this tab after parsing, the data is visible.
-    if st.session_state.get('parsed', {}).get('name') and 'error' not in st.session_state.parsed:
-        # Check if the parsed data has been loaded into the form data already
-        # Use a simple flag or compare names/emails to avoid clobbering manual edits if the form was already used
-        # A simpler approach is to always update when the parsed data is new/available.
-        
-        # Check if the form data has been initialized with the current parsed data
-        if st.session_state.cv_form_data.get('name') != st.session_state.parsed.get('name') or \
-           st.session_state.cv_form_data.get('email') != st.session_state.parsed.get('email'):
+    # 2. Check for newly parsed data and data_source flag (This is the critical fix)
+    # The 'parsed' data is considered the source of truth if a successful parse just occurred.
+    if st.session_state.get('data_source') in ['parsed_file', 'parsed_text']:
+        if st.session_state.get('parsed') and 'error' not in st.session_state.parsed:
             
-            # Merge parsed data into a copy of default to ensure all keys exist
+            # Merge the new parsed data into the form data template
             st.session_state.cv_form_data = {**default_parsed, **st.session_state.parsed}
-            st.toast("CV Management form updated with data from the Resume Parsing tab.")
             
+            # Clear the flag *after* synchronization is done, allowing manual edits next time
+            st.session_state.data_source = 'synced'
+            
+            # Optional: Rerun is not strictly needed here but ensures immediate widget refresh if desired
+            # st.rerun() 
+            st.toast("CV form synchronized with newly parsed data.")
+
+    # 3. If the flag is 'manual', use existing form data (or if 'synced', use current form data)
+    # If the user clicks 'Generate and Load CV Data', the flag is set to 'manual'.
     # --- END FIX ---
             
     
     # --- CV Builder Form ---
+    # The form content uses the st.session_state.cv_form_data values to populate itself.
     with st.form("cv_builder_form"):
         st.subheader("Personal & Contact Details")
         
         # Row 1: Name, Email, Phone
         col1, col2, col3 = st.columns(3)
         with col1:
+            # Use current value from session state
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
                 value=st.session_state.cv_form_data.get('name', ''), 
@@ -702,16 +717,17 @@ def cv_management_tab_content():
             return
 
         # 2. Update the main session state variables (as if a file was parsed)
-        # We need to make sure 'name' key exists for the logic in other tabs
         if 'name' not in st.session_state.cv_form_data:
              st.session_state.cv_form_data['name'] = st.session_state.cv_form_data.get('email', 'Manual CV').split('@')[0]
              
+        # Set both parsed and form data to be the same, and set the flag to manual
         st.session_state.parsed = st.session_state.cv_form_data.copy()
+        st.session_state.data_source = 'manual' 
         
         # 3. Create a compiled text representation for Q&A/Text Download
         compiled_text = ""
         for k, v in st.session_state.cv_form_data.items():
-            if v:
+            if v and k not in ['error']:
                 compiled_text += f"{k.replace('_', ' ').title()}:\n"
                 if isinstance(v, list):
                     compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
@@ -729,6 +745,8 @@ def cv_management_tab_content():
     st.subheader("2. Loaded CV Data Preview and Download")
     
     # --- TABBED VIEW SECTION (PDF/MARKDOWN/JSON) ---
+    # This check relies solely on st.session_state.parsed, which is updated either by the
+    # parsing tab or the form submission above.
     if st.session_state.get('parsed', {}).get('name') and 'error' not in st.session_state.parsed:
         
         # Filter for non-empty/non-list fields before sending to formatter
@@ -821,7 +839,11 @@ def cv_management_tab_content():
         with tab_pdf:
             st.markdown("### Download CV as HTML (Print-to-PDF)")
             st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document.")
+            st.markdown("""
+            > 
             
+            *You may need to manually enable 'Background graphics' in the print settings for full styling.*
+            """)
             
             html_output = generate_cv_html(filled_data_for_preview)
 
@@ -1172,6 +1194,9 @@ def candidate_dashboard():
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
     if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
     if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
+    
+    # NEW state variable to track data source/sync status
+    if "data_source" not in st.session_state: st.session_state.data_source = 'empty' 
     
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
