@@ -105,10 +105,10 @@ def parse_resume_with_llm(text):
     """Sends resume text to the LLM for structured information extraction."""
     if text.startswith("[Error") or isinstance(client, MockGroqClient):
         # Mock structured data for demonstration
-        return {"name": "Mock Candidate", "email": "mock@example.com", "phone": "555-1234", "summary": "Highly motivated individual with mock experience in Python and Streamlit.", "skills": ["Python", "Streamlit", "SQL", "AWS"], "education": ["B.S. Computer Science, Mock University"], "experience": ["Software Intern, Mock Solutions (2024-2025)"], "error": "Mock/Parsing error." if isinstance(client, MockGroqClient) else text}
+        return {"name": "Mock Candidate", "email": "mock@example.com", "phone": "555-1234", "linkedin": "linkedin.com/in/mock", "github": "github.com/mock", "personal_details": "Highly motivated individual with mock experience in Python and Streamlit.", "skills": ["Python", "Streamlit", "SQL", "AWS"], "education": ["B.S. Computer Science, Mock University"], "experience": ["Software Intern, Mock Solutions (2024-2025)"], "certifications": ["Mock Certification"], "projects": ["Mock Project"], "strength": ["Mock Strength"], "error": "Mock/Parsing error." if isinstance(client, MockGroqClient) else text}
 
     # Placeholder for actual Groq call
-    return {"name": "Parsed Candidate", "email": "parsed@example.com", "phone": "555-9876", "linkedin": "linkedin.com/in/parsed", "github": "github.com/parsed", "summary": "Actual parsed summary from LLM.", "skills": ["Real", "Python", "Streamlit"], "education": ["University of Code"], "experience": ["Senior Developer, TechCo"], "certifications": ["AWS Certified"], "projects": ["Project Alpha"], "strength": ["Teamwork"], "personal_details": "Highly adaptable."} 
+    return {"name": "Parsed Candidate", "email": "parsed@example.com", "phone": "555-9876", "linkedin": "linkedin.com/in/parsed", "github": "github.com/parsed", "personal_details": "Actual parsed summary from LLM.", "skills": ["Real", "Python", "Streamlit"], "education": ["University of Code"], "experience": ["Senior Developer, TechCo"], "certifications": ["AWS Certified"], "projects": ["Project Alpha"], "strength": ["Teamwork"], "error": None} 
 
 
 @st.cache_data(show_spinner="Analyzing JD for metadata...")
@@ -206,7 +206,6 @@ def evaluate_jd_fit(jd_content, parsed_json):
     A strong candidate with core skills. Recommend for interview if the experience gap in orchestration tools can be overlooked or quickly trained.
     """
 
-# --- NEW HTML GENERATION FUNCTION ---
 def generate_cv_html(parsed_data):
     """Generates basic HTML from the parsed CV data for print-to-PDF."""
     
@@ -280,7 +279,7 @@ def generate_cv_html(parsed_data):
 def resume_parsing_tab():
     st.header("📄 Upload/Paste Resume for AI Parsing")
     
-    # UPDATED FILE UPLOADER TYPES
+    # File types allowed
     file_types_allowed = ['pdf', 'docx', 'txt', 'md', 'json', 'xlsx']
     
     with st.form("resume_parsing_form", clear_on_submit=False):
@@ -343,13 +342,13 @@ def resume_parsing_tab():
             st.success(f"✅ Successfully parsed and loaded CV for **{candidate_name}**! Check the 'CV Management' tab to review/edit.")
             st.rerun()
 
-# --- REPLACED/UPDATED CV MANAGEMENT FUNCTION ---
+# --- FIXED CV MANAGEMENT FUNCTION ---
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("Fill out the details below to generate a parsed CV that can be used immediately for matching and interview prep, or start by parsing a file in the 'Resume Parsing' tab.")
 
-    # Initialize the parsed data if not already existing
+    # Define the template for a complete CV data structure
     default_parsed = {
         "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
         "skills": [], "experience": [], "education": [], "certifications": [], 
@@ -358,12 +357,17 @@ def cv_management_tab_content():
     
     # Use a specific session state key for form data, initializing from parsed if available
     if "cv_form_data" not in st.session_state:
-        # Load existing parsed data or default if the tab is opened for the first time
+        # If parsed data exists and has a name, merge it into the default structure
         if st.session_state.get('parsed', {}).get('name'):
-            st.session_state.cv_form_data = st.session_state.parsed.copy()
+            # Merge parsed data into a copy of default to ensure all keys exist
+            st.session_state.cv_form_data = {**default_parsed, **st.session_state.parsed}
         else:
-            st.session_state.cv_form_data = default_parsed
+            # Otherwise, use the clean default structure
+            st.session_state.cv_form_data = default_parsed.copy()
             
+    # CRITICAL FIX: Ensure form data keys are accessed safely, which the initialization above now guarantees, 
+    # but defensive coding for list-to-string conversion is still necessary.
+    
     # --- CV Builder Form ---
     with st.form("cv_builder_form"):
         st.subheader("Personal & Contact Details")
@@ -373,19 +377,19 @@ def cv_management_tab_content():
         with col1:
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
-                value=st.session_state.cv_form_data['name'], 
+                value=st.session_state.cv_form_data.get('name', ''), 
                 key="cv_name"
             )
         with col2:
             st.session_state.cv_form_data['email'] = st.text_input(
                 "Email Address", 
-                value=st.session_state.cv_form_data['email'], 
+                value=st.session_state.cv_form_data.get('email', ''), 
                 key="cv_email"
             )
         with col3:
             st.session_state.cv_form_data['phone'] = st.text_input(
                 "Phone Number", 
-                value=st.session_state.cv_form_data['phone'], 
+                value=st.session_state.cv_form_data.get('phone', ''), 
                 key="cv_phone"
             )
         
@@ -418,6 +422,7 @@ def cv_management_tab_content():
         st.subheader("Technical Sections (One Item per Line)")
 
         # Skills
+        # Ensure conversion from list to string for display, handling None/empty gracefully
         skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
         new_skills_text = st.text_area(
             "Key Skills (Technical and Soft)", 
@@ -482,15 +487,14 @@ def cv_management_tab_content():
 
     if submit_form_button:
         # 1. Basic validation
-        if not st.session_state.cv_form_data['name'] or not st.session_state.cv_form_data['email']:
+        if not st.session_state.cv_form_data.get('name') or not st.session_state.cv_form_data.get('email'):
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
 
         # 2. Update the main session state variables (as if a file was parsed)
         st.session_state.parsed = st.session_state.cv_form_data.copy()
-        st.session_state.parsed['name'] = st.session_state.cv_form_data['name'] # Ensure name is set for display
         
-        # 3. Create a compiled text representation for Q&A/Text Download (simple compilation of all fields)
+        # 3. Create a compiled text representation for Q&A/Text Download
         compiled_text = ""
         for k, v in st.session_state.cv_form_data.items():
             if v:
@@ -502,9 +506,7 @@ def cv_management_tab_content():
         st.session_state.full_text = compiled_text
         
         # 4. Clear related states (since this is a new resume)
-        # Note: Managed CVs and show_cv_output states removed as they were simplified in the last iteration
         if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
-        # These states are placeholders for future tabs (Q&A/Interview prep)
         if 'interview_qa' in st.session_state: del st.session_state.interview_qa
         if 'evaluation_report' in st.session_state: del st.session_state.evaluation_report
 
@@ -549,7 +551,7 @@ def cv_management_tab_content():
                 v = parsed_data.get(k)
                 
                 # Skip contact details already handled in header
-                if k in ['name', 'email', 'phone', 'linkedin', 'github']: continue 
+                if k in ['name', 'email', 'phone', 'linkedin', 'github', 'error']: continue 
 
                 if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
                     
@@ -770,7 +772,7 @@ def jd_batch_match_tab():
     # Determine if a resume/CV is ready
     is_resume_parsed = st.session_state.get('parsed') is not None
     
-    if not is_resume_parsed:
+    if not is_resume_parsed or not st.session_state.parsed.get('name'):
         st.warning("Please **upload and parse your resume** in the 'Resume Parsing' tab or **build your CV** in the 'CV Management' tab first.")
         
     elif not st.session_state.candidate_jd_list:
@@ -934,28 +936,22 @@ def candidate_dashboard():
             
     st.markdown("---")
 
-    # --- Session State Initialization ---
-    if "parsed" not in st.session_state: st.session_state.parsed = None # Stores the current structured CV/Resume data for matching
-    if "full_text" not in st.session_state: st.session_state.full_text = "" # Stores the raw text version of the CV/Resume
-    if "cv_form_data" not in st.session_state: st.session_state.cv_form_data = {} # Stores the data currently in the CV Builder form
+    # --- Session State Initialization (CRITICAL FIX: Initialize parsed as empty dict) ---
+    if "parsed" not in st.session_state: st.session_state.parsed = {} # Initialized to {} instead of None
+    if "full_text" not in st.session_state: st.session_state.full_text = ""
+    if "cv_form_data" not in st.session_state: st.session_state.cv_form_data = {} 
     
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
     
-    # Initialize basic form states (required for inputs to bind correctly if form is used first)
-    if "cv_name" not in st.session_state: st.session_state.cv_name = ""
-    # ... (other cv_ form keys will be initialized within the cv_management_tab_content function)
-
 
     # --- Main Content with Tabs ---
-    # NOTE: "CV Management (Form)" tab is replaced by the new function
     tab_parsing, tab_management, tab_jd, tab_batch_match = st.tabs(["📄 Resume Parsing", "📝 CV Management", "📚 JD Management", "🎯 Batch JD Match"])
     
     with tab_parsing:
         resume_parsing_tab()
         
     with tab_management:
-        # Calls the newly defined/replaced function
         cv_management_tab_content() 
         
     with tab_jd:
