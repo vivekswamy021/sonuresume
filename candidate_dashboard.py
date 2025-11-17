@@ -1306,9 +1306,9 @@ def clear_all_jds():
     st.session_state.show_jd_details_from_filter = False
     st.toast("All saved JDs cleared!")
 
-# Modified function: REMOVED RAW TEXT TAB/DISPLAY
+# MODIFIED FUNCTION: Includes tab to view raw text
 def display_jd_details(key):
-    """Displays the details of the selected JD (Structured Summary ONLY)."""
+    """Displays the details of the selected JD (Structured Summary and Raw Text)."""
     jd_data = st.session_state.managed_jds.get(key)
     
     if not jd_data or isinstance(jd_data, str):
@@ -1317,22 +1317,32 @@ def display_jd_details(key):
 
     st.markdown(f"### JD Details: **{jd_data.get('title', 'N/A')}**")
     
-    st.markdown("#### Structured Summary")
-    st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
-    st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
-    
-    st.markdown("#### Required Skills")
-    st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+    tab_structured, tab_raw = st.tabs(["Structured Summary (AI Output)", "Raw Uploaded/Pasted Text"])
 
-    st.markdown("#### Qualifications")
-    st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
-    
-    st.markdown("#### Responsibilities")
-    st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
-    
+    with tab_structured:
+        st.markdown("#### Structured Summary")
+        st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
+        st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+        
+        st.markdown("#### Required Skills")
+        st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+
+        st.markdown("#### Qualifications")
+        st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
+        
+        st.markdown("#### Responsibilities")
+        st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
+
+    with tab_raw:
+        st.markdown("#### Original Content")
+        raw_text = jd_data.get('raw_text', 'Raw text not saved for this entry.')
+        st.code(raw_text, language='text')
+
+        if len(raw_text) < 100:
+             st.warning("The raw text appears short or incomplete. Please check the original uploaded file or pasted content.")
+        
     if st.button("⬅️ Hide Details", key="hide_jd_details"):
         st.session_state.selected_jd_key = None
-        # Also unset the filter flag if coming from there
         st.session_state.show_jd_details_from_filter = False
         st.rerun()
 
@@ -2066,7 +2076,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter', 'last_cover_letter', 'cl_cv_name', 'cl_jd_title']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter', 'last_cover_letter', 'cl_cv_name', 'cl_jd_title', 'jd_processing_messages']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
