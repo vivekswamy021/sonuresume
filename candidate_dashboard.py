@@ -353,18 +353,15 @@ def parse_resume_with_llm(text):
         error_msg = f"LLM API interaction error: {e}"
         return {"name": get_fallback_name(), "error": error_msg}
 
-# -----------------------------------------------------------
-# END ADAPTED FUNCTION
-# -----------------------------------------------------------
-
-
 # --- HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
 
 def clear_interview_state():
     """Clears all session state variables related to interview/match sessions."""
+    # Note: st.session_state items are deleted if they exist, which is cleaner than setting to empty
     if 'interview_chat_history' in st.session_state: del st.session_state['interview_chat_history']
     if 'current_interview_jd' in st.session_state: del st.session_state['current_interview_jd']
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
+    # Match results are set to empty list rather than deleting, as they are part of the Batch Match state structure
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     
 # Updated signature to match the request
@@ -1360,13 +1357,6 @@ def parsed_data_tab():
             st.markdown("---")
             st.info("For structured data (JSON) or raw text (Markdown), please check their respective viewing tabs.")
 
-    else:
-        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
-        # Display the actual error message if one exists
-        if st.session_state.get('parsed', {}).get('error') is not None:
-             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
-        st.info("Please successfully parse a resume in the **Resume Parsing** tab.")
-
 # --------------------------------------------------------------------------------------
 # CHATBOT FUNCTIONALITY
 # --------------------------------------------------------------------------------------
@@ -1374,7 +1364,7 @@ def parsed_data_tab():
 # 1. Resume Q&A Function (Original)
 def qa_on_resume(question):
     """Chatbot for Resume (Q&A) using LLM."""
-    global client, GROQ_MODEL, GROQ_API_KEY
+    # Use global access to client, model, and key
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
         return "AI Chatbot Disabled: GROQ_API_KEY not set."
@@ -1406,7 +1396,7 @@ def qa_on_resume(question):
 # 2. JD Q&A Function (New)
 def qa_on_jd(question, jd_content):
     """Chatbot for Job Description (Q&A) using LLM."""
-    global client, GROQ_MODEL, GROQ_API_KEY
+    # Use global access to client, model, and key
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
         return "AI Chatbot Disabled: GROQ_API_KEY not set."
@@ -1577,6 +1567,7 @@ def candidate_dashboard():
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
             for key in list(st.session_state.keys()):
+                # Only keep essential session state keys for the overall app structure
                 if key not in ['page', 'logged_in', 'user_type']:
                     del st.session_state[key]
             go_to("login")
@@ -1585,6 +1576,9 @@ def candidate_dashboard():
     st.markdown("---")
 
     # --- Session State Initialization ---
+    # Simplified initialization: setting defaults if they don't exist
+    
+    # Parsing/Data State
     if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
@@ -1592,16 +1586,19 @@ def candidate_dashboard():
     if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
     if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
     
+    # JD Management / Match State
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
     if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
     
-    # Chatbot history initialized separately for each sub-tab
+    # Chatbot State
+    # Note: resume_chatbot_history is kept as a list for simplicity in that sub-tab
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
-    if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} # Keyed by JD name
+    # jd_chatbot_history is kept as a dict, keyed by JD name
+    if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} 
 
-    # --- Main Content with Tabs (NEW TAB ADDED) ---
+    # --- Main Content with Tabs (6 Tabs) ---
     tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
         ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot"]
     )
