@@ -63,6 +63,35 @@ class MockGroqClient:
                     else:
                         return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Based on the mock resume data, I can provide a simulated answer to your question about {question}.'})})()]})
 
+                # Check for Resume Customizer
+                elif "Generate a new professional summary" in prompt_content:
+                    # Mock response for summary generation
+                    return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'Highly motivated Cloud Engineer with 3+ years of experience in AWS infrastructure and MLOps, tailored specifically for the requirements of the [Mock Target JD] role.'})})()]})
+                    
+                # Check for Skills Gap Analysis (Mock Output)
+                elif "Identify the skills present in the JD but missing" in prompt_content:
+                    mock_gap_analysis = """
+                    --- Skills Gap Analysis ---
+                    
+                    ### Matched Skills:
+                    * Python
+                    * SQL
+                    * AWS
+                    
+                    ### Missing Skills (Gap):
+                    * Terraform (Required by JD)
+                    * Kubernetes (Required by JD)
+                    * CI/CD (Required by JD)
+                    
+                    ### Candidate Strengths (Resume Only):
+                    * Data Visualization
+                    * Java
+                    
+                    ### Summary:
+                    The most critical gaps are **Terraform** and **Kubernetes**. Focusing on these will significantly boost your score for the target JD.
+                    """
+                    return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': mock_gap_analysis})})()]})
+
 
                 # Mock candidate data (Vivek Swamy) for parsing
                 mock_llm_json = {
@@ -570,7 +599,7 @@ def extract_jd_metadata(jd_text):
     role = role_match.group(1).strip() if role_match else "Software Engineer (Mock)"
     
     # Extract Skills from JD content - ENHANCED SKILL LIST
-    skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit|Cloud|Data|ML|LLM|MLOps|Visualization|Deep Learning|TensorFlow|Pytorch)', jd_text, re.IGNORECASE)
+    skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit|Cloud|Data|ML|LLM|MLOps|Visualization|Deep Learning|TensorFlow|Pytorch|Terraform|CI/CD)', jd_text, re.IGNORECASE)
     
     # Simple heuristic to improve role names if generic title is found
     if 'data scientist' in jd_text.lower() or 'machine learning' in jd_text.lower():
@@ -602,7 +631,7 @@ def extract_jd_from_linkedin_url(url):
         
     elif "cloud-engineer" in url_lower or "aws" in url_lower:
         role = "Cloud Engineer"
-        skills = ["AWS", "Docker", "Kubernetes", "Cloud Services", "GCP", "Terraform"]
+        skills = ["AWS", "Docker", "Kubernetes", "Cloud Services", "GCP", "Terraform", "CI/CD"]
         focus = "infrastructure as code and cloud deployment"
         
     elif "ml-engineer" in url_lower or "ai-engineer" in url_lower:
@@ -1025,18 +1054,10 @@ def initialize_certifications_data(initial_data):
         
     return structured_list
 
+
 def generate_cv_form():
     """Allows candidates to enter details via a form to generate a structured CV."""
     
-    import streamlit as st # Assuming st is imported at the top level in the actual script
-    
-    # Placeholder functions (You'll need to define these in your actual script)
-    def initialize_experience_data(data): return data.get('experience', [])
-    def initialize_education_data(data): return data.get('education', [])
-    def initialize_certifications_data(data): return data.get('certifications', [])
-    def initialize_projects_data(data): return data.get('projects', []) # New Initialization
-    def format_to_list(text): return [line.strip() for line in text.split('\n') if line.strip()]
-
     st.header("📝 Generate Your CV (Form Based)")
     st.markdown("Fill out the form below to create a structured CV/Resume, which will be loaded into the dashboard for analysis.")
 
@@ -1058,16 +1079,12 @@ def generate_cv_form():
     if 'structured_education' not in st.session_state:
         st.session_state.structured_education = initialize_education_data(initial_data)
         
+    # --- NEW: Initialize or load structured certifications data ---
     if 'structured_certifications' not in st.session_state:
         st.session_state.structured_certifications = initialize_certifications_data(initial_data)
 
-    # --- NEW: Initialize or load structured projects data ---
-    if 'structured_projects' not in st.session_state:
-        st.session_state.structured_projects = initialize_projects_data(initial_data)
-        
-
+    
     # --- DYNAMIC EDUCATION SECTION ---
-    # ... (Existing Education Section code) ...
     st.markdown("---")
     st.markdown("### 2. Education")
     st.markdown("Add your education entries one by one.")
@@ -1121,7 +1138,6 @@ def generate_cv_form():
 
     
     # --- DYNAMIC CERTIFICATIONS SECTION (NEW) ---
-    # ... (Existing Certifications Section code) ...
     st.markdown("### 3. Certifications") 
     st.markdown("Add your certifications one by one.")
 
@@ -1174,7 +1190,6 @@ def generate_cv_form():
 
     
     # --- DYNAMIC EXPERIENCE SECTION ---
-    # ... (Existing Experience Section code) ...
     st.markdown("### 4. Work Experience") # Re-numbered
     st.markdown("Add your work history entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
 
@@ -1238,64 +1253,7 @@ def generate_cv_form():
         
     st.markdown("---")
     # --- End Dynamic Experience Section ---
-    
-# --- DYNAMIC PROJECTS SECTION (NEW) ---
-    st.markdown("### 5. Projects") 
-    st.markdown("Add your key projects one by one.")
 
-    # Display existing projects entries with removal button
-    if st.session_state.structured_projects:
-        for i, project in enumerate(st.session_state.structured_projects):
-            # FIX: Ensure item is a dictionary before accessing keys
-            if not isinstance(project, dict):
-                st.warning(f"Skipping malformed project entry at index {i}.")
-                continue
-            
-            col_display, col_remove = st.columns([4, 1])
-            with col_display:
-                st.markdown(f"**{i+1}. {project['name']}**")
-                st.caption(f"Description: {project['description'][:80]}...")
-                if project.get('app_link') and project['app_link'] != 'N/A':
-                    st.caption(f"Link: {project['app_link']}")
-            with col_remove:
-                if st.button("🗑️ Remove", key=f"remove_proj_{i}"):
-                    st.session_state.structured_projects.pop(i)
-                    st.toast(f"Removed project entry {i+1}.")
-                    st.rerun() 
-        st.markdown("---")
-
-    # --- MINI-FORM FOR ADDING NEW PROJECT (Separate Form) ---
-    st.markdown("##### Add New Project Entry")
-    with st.form("add_projects_mini_form", clear_on_submit=True):
-        col_new_proj1, col_new_proj2 = st.columns(2)
-        
-        with col_new_proj1:
-            new_project_name = st.text_input("Project Name/Title", key="new_project_name")
-        with col_new_proj2:
-            new_app_link = st.text_input("Application/Demo Link (optional)", key="new_app_link")
-        
-        new_project_description = st.text_area(
-            "Project Description (Brief overview, technologies used, achievements)", 
-            key="new_project_description", 
-            height=100
-        )
-        
-        add_project_submitted = st.form_submit_button("➕ Add Project Entry", type="secondary", use_container_width=True)
-
-        if add_project_submitted:
-            if new_project_name and new_project_description:
-                new_entry = {
-                    "name": new_project_name.strip(),
-                    "description": new_project_description.strip(),
-                    "app_link": new_app_link.strip() or "N/A",
-                }
-                st.session_state.structured_projects.append(new_entry)
-                st.success(f"Added Project: {new_project_name}")
-            else:
-                st.error("Please fill in Project Name and Description.")
-        
-    st.markdown("---")
-    # --- End Dynamic Projects Section ---
     
     # --- MAIN CV GENERATION FORM ---
     with st.form("cv_generation_form"):
@@ -2172,6 +2130,377 @@ def chatbot_tab_content():
 # END CHATBOT FUNCTIONALITY
 # --------------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------------------
+# NEW TAB 1: Skills Gap Analysis
+# --------------------------------------------------------------------------------------
+
+def run_skills_gap_analysis(jd_content, resume_skills_list):
+    """
+    Identifies skills in JD not present in the resume using LLM.
+    """
+    if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
+        return "AI Analysis Disabled: GROQ_API_KEY not set."
+
+    if not jd_content.strip(): 
+        return "Please select a valid Job Description."
+    
+    if not resume_skills_list:
+        return "Resume skills list is empty. Please upload a valid resume."
+
+    resume_skills_text = ", ".join([s.strip() for s in resume_skills_list if s.strip()])
+
+    prompt = f"""
+    You are a career consultant. Your task is to perform a detailed skills gap analysis.
+    
+    Job Description Content:
+    {jd_content}
+    
+    Candidate's Current Skills:
+    {resume_skills_text}
+    
+    Instructions:
+    1.  **Matched Skills:** List all skills present in BOTH the JD requirements and the Candidate's skills.
+    2.  **Missing Skills (Gap):** List all essential skills explicitly mentioned or strongly implied in the JD that are NOT in the Candidate's skills list.
+    3.  **Candidate Strengths:** List skills present ONLY on the Candidate's resume (not explicitly required by the JD).
+    4.  **Summary:** Provide a concise summary of the most critical skill gaps.
+
+    Format the output strictly using markdown headings and bullet points for easy parsing, starting with '--- Skills Gap Analysis ---'
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Analysis Error: Failed to get response from LLM. Error: {e}"
+
+
+def skills_gap_analysis_tab():
+    st.header("📊 Skills Gap Analysis")
+    st.markdown("Compare your skills against a target Job Description to identify gaps.")
+    
+    is_resume_parsed = (
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
+
+    if not is_resume_parsed:
+        st.warning("⚠️ **Analysis Disabled:** Please parse a valid resume in the 'Resume Parsing' tab first.")
+        return
+    
+    if not st.session_state.get('candidate_jd_list'):
+        st.warning("⚠️ **Analysis Disabled:** Please load Job Descriptions in the 'JD Management' tab first.")
+        return
+
+    jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+    selected_jd_name = st.selectbox(
+        "Select Target Job Description",
+        options=jd_names,
+        key="selected_jd_for_gap_analysis"
+    )
+
+    st.markdown("---")
+    
+    if st.button(f"Run Skills Gap Analysis against **{selected_jd_name.replace('--- Simulated JD for: ', '')}**", type="primary", use_container_width=True):
+        
+        selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+        
+        if selected_jd:
+            with st.spinner("Running deep skills comparison with AI..."):
+                jd_content = selected_jd['content']
+                resume_skills = st.session_state.parsed.get('skills', [])
+                
+                analysis_result = run_skills_gap_analysis(jd_content, resume_skills)
+                st.session_state.last_gap_analysis = analysis_result
+                st.session_state.last_gap_analysis_jd = selected_jd_name
+        else:
+            st.error("Selected JD not found.")
+
+    st.markdown("---")
+    
+    if st.session_state.get('last_gap_analysis') and st.session_state.last_gap_analysis_jd == selected_jd_name:
+        st.subheader(f"Results for: {selected_jd_name.replace('--- Simulated JD for: ', '')}")
+        
+        # Display the markdown output directly
+        st.markdown(st.session_state.last_gap_analysis)
+        
+        if "AI Analysis Error" in st.session_state.last_gap_analysis:
+             st.error("The AI encountered an error while running the analysis.")
+
+# --------------------------------------------------------------------------------------
+# NEW TAB 2: Resume Customizer
+# --------------------------------------------------------------------------------------
+
+def generate_custom_summary(jd_content, parsed_json):
+    """Generates a tailored professional summary using LLM."""
+    if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
+        return "AI Customizer Disabled: GROQ_API_KEY not set."
+
+    if not jd_content.strip(): 
+        return "Please select a valid Job Description."
+        
+    resume_skills = ", ".join(parsed_json.get('skills', []))
+    resume_experience = "\n".join(parsed_json.get('experience', []))
+    
+    prompt = f"""
+    You are an expert resume writer. Your task is to generate a compelling 3-4 sentence professional summary/objective tailored for the target Job Description (JD).
+    Use the candidate's existing skills and experience to highlight matches with the JD.
+    
+    Target Job Description:
+    {jd_content}
+    
+    Candidate's Key Details:
+    - Skills: {resume_skills}
+    - Experience Snippets: {resume_experience[:500]}
+    
+    Generate a new professional summary (max 4 sentences) that clearly links the candidate's qualifications to the JD's requirements.
+    Return only the summary text.
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Customizer Error: Failed to get response from LLM. Error: {e}"
+
+def resume_customizer_tab():
+    st.header("⭐ Resume Customizer")
+    st.markdown("Generate a tailored Professional Summary/Objective for a specific Job Description.")
+    
+    is_resume_parsed = (
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
+
+    if not is_resume_parsed:
+        st.warning("⚠️ **Customizer Disabled:** Please parse a valid resume in the 'Resume Parsing' tab first.")
+        return
+    
+    if not st.session_state.get('candidate_jd_list'):
+        st.warning("⚠️ **Customizer Disabled:** Please load Job Descriptions in the 'JD Management' tab first.")
+        return
+
+    jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+    selected_jd_name = st.selectbox(
+        "Select Target Job Description",
+        options=jd_names,
+        key="selected_jd_for_customizer"
+    )
+    
+    st.markdown("---")
+    
+    if st.button(f"Generate Tailored Summary for **{selected_jd_name.replace('--- Simulated JD for: ', '')}**", type="primary", use_container_width=True):
+        selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+        
+        if selected_jd:
+            with st.spinner("Generating targeted professional summary..."):
+                jd_content = selected_jd['content']
+                custom_summary = generate_custom_summary(jd_content, st.session_state.parsed)
+                st.session_state.last_custom_summary = custom_summary
+                st.session_state.last_custom_summary_jd = selected_jd_name
+        else:
+            st.error("Selected JD not found.")
+
+    st.markdown("---")
+    
+    if st.session_state.get('last_custom_summary') and st.session_state.last_custom_summary_jd == selected_jd_name:
+        st.subheader(f"Generated Summary for: {selected_jd_name.replace('--- Simulated JD for: ', '')}")
+        st.code(st.session_state.last_custom_summary, language='markdown')
+        
+        st.markdown("---")
+        st.info("Copy and paste this summary into the 'Personal Details' section of your CV in the 'CV Management' tab, or directly into your application!")
+
+# --------------------------------------------------------------------------------------
+# NEW TAB 3: Application Tracker
+# --------------------------------------------------------------------------------------
+
+def application_tracker_tab():
+    st.header("📧 Application Tracker")
+    st.markdown("Log and track the status of your job applications.")
+
+    if "application_log" not in st.session_state:
+        st.session_state.application_log = []
+
+    # --- Add New Application Form ---
+    st.markdown("### Add New Application")
+    with st.form("add_application_form", clear_on_submit=True):
+        col_new_app1, col_new_app2 = st.columns(2)
+        
+        with col_new_app1:
+            app_company = st.text_input("Company Name", key="new_app_company")
+            app_role = st.text_input("Applied Role", key="new_app_role")
+            
+        with col_new_app2:
+            app_date = st.date_input("Application Date", key="new_app_date", value=datetime.today())
+            app_status = st.selectbox(
+                "Current Status",
+                ["Applied", "Under Review", "Interviewing", "Offer Received", "Rejected", "Withdrawn"],
+                key="new_app_status"
+            )
+
+        app_notes = st.text_area("Notes/Link to JD", key="new_app_notes", height=80)
+        
+        if st.form_submit_button("➕ Log Application", type="primary", use_container_width=True):
+            if app_company and app_role:
+                new_app = {
+                    "id": len(st.session_state.application_log) + 1,
+                    "company": app_company.strip(),
+                    "role": app_role.strip(),
+                    "date": app_date.strftime("%Y-%m-%d"),
+                    "status": app_status,
+                    "notes": app_notes.strip()
+                }
+                st.session_state.application_log.append(new_app)
+                st.success(f"Application for **{app_role}** at **{app_company}** logged!")
+                st.rerun()
+            else:
+                st.error("Please enter Company Name and Applied Role.")
+
+    st.markdown("---")
+
+    # --- Display Application Log ---
+    st.markdown("### Application History")
+
+    if st.session_state.application_log:
+        
+        # Convert log to DataFrame for easy display and sorting
+        df = pd.DataFrame(st.session_state.application_log)
+        
+        # Formatting/Highlighting logic (e.g., color coding status)
+        def color_status(val):
+            if val == "Offer Received":
+                color = '#4CAF50' # Green
+            elif val == "Interviewing":
+                color = '#2196F3' # Blue
+            elif val == "Rejected":
+                color = '#F44336' # Red
+            else:
+                color = ''
+            return f'background-color: {color}; color: white'
+
+        styled_df = df.style.applymap(color_status, subset=['status'])
+        
+        st.dataframe(
+            styled_df.set_properties(**{'white-space': 'pre-wrap'}), 
+            use_container_width=True,
+            column_order=["company", "role", "date", "status", "notes"]
+        )
+
+        st.markdown("---")
+        
+        # --- Update/Remove Controls ---
+        st.markdown("#### Update or Remove Applications")
+        
+        app_options = [f"{app['id']}: {app['role']} at {app['company']}" for app in st.session_state.application_log]
+        
+        col_select, col_update, col_remove = st.columns([2, 1, 1])
+        
+        with col_select:
+            selected_app_display = st.selectbox(
+                "Select Application to Update/Remove",
+                options=["Select an Application"] + app_options,
+                key="app_select_for_action"
+            )
+
+        if selected_app_display != "Select an Application":
+            app_id = int(selected_app_display.split(":")[0])
+            selected_app = next(app for app in st.session_state.application_log if app['id'] == app_id)
+
+            # Update Form (Use unique key suffix)
+            new_status = col_update.selectbox(
+                "Change Status",
+                ["Applied", "Under Review", "Interviewing", "Offer Received", "Rejected", "Withdrawn"],
+                index=["Applied", "Under Review", "Interviewing", "Offer Received", "Rejected", "Withdrawn"].index(selected_app['status']),
+                key=f"update_status_{app_id}"
+            )
+            
+            # Action Buttons
+            with col_update:
+                if st.button("🔄 Update Status", key=f"update_app_{app_id}", use_container_width=True):
+                    selected_app['status'] = new_status
+                    st.toast(f"Status for **{selected_app['company']}** updated to **{new_status}**.")
+                    st.rerun()
+            
+            with col_remove:
+                st.write("") # Spacer
+                if st.button("🗑️ Remove Application", key=f"remove_app_{app_id}", use_container_width=True):
+                    st.session_state.application_log = [app for app in st.session_state.application_log if app['id'] != app_id]
+                    st.toast(f"Application {app_id} removed.")
+                    st.rerun()
+
+    else:
+        st.info("No applications logged yet.")
+
+# --------------------------------------------------------------------------------------
+# NEW TAB 4: Resources & Learning Paths
+# --------------------------------------------------------------------------------------
+
+def resources_learning_paths_tab():
+    st.header("📚 Resources & Learning Paths")
+    st.markdown("Find courses and resources based on your identified skill gaps.")
+
+    if not st.session_state.get('last_gap_analysis'):
+        st.info("Run a **Skills Gap Analysis** (in the 'Skills Gap Analysis' tab) first to generate tailored recommendations.")
+        st.markdown("---")
+
+    # --- Extracted Gaps from Last Analysis ---
+    st.subheader("Targeted Learning Paths (Based on Last Gap Analysis)")
+    
+    missing_skills = []
+    
+    if st.session_state.get('last_gap_analysis'):
+        analysis_output = st.session_state.last_gap_analysis
+        
+        # Regex to find skills under the "Missing Skills (Gap):" section
+        gap_section_match = re.search(r'### Missing Skills \(Gap\):\s*(.*?)\s*###', analysis_output, re.DOTALL | re.IGNORECASE)
+        
+        if gap_section_match:
+            gap_text = gap_section_match.group(1).strip()
+            # Extract skills listed as bullet points or newline separated
+            skills = re.findall(r'\*\s*([\w\s/-]+)', gap_text)
+            missing_skills = [s.strip() for s in skills if s.strip()]
+
+        if missing_skills:
+            st.warning(f"Based on your last analysis for **{st.session_state.last_gap_analysis_jd.replace('--- Simulated JD for: ', '')}**, your critical gaps are:")
+            st.markdown(f"**Missing Skills:** `{', '.join(missing_skills)}`")
+            
+            st.markdown("---")
+            st.subheader("Suggested Resources")
+            
+            # Generate resource links based on missing skills (Mock data)
+            for skill in missing_skills:
+                skill_base = skill.split('(')[0].strip() # e.g., get 'Terraform' from 'Terraform (Required by JD)'
+                st.markdown(f"#### 🎓 Resources for **{skill_base}**")
+                
+                # Mock links
+                st.markdown(f"* [Coursera: {skill_base} Specialization](https://www.coursera.org/search?query={skill_base.replace(' ', '+')})")
+                st.markdown(f"* [Udemy: Advanced {skill_base} Masterclass](https://www.udemy.com/topic/{skill_base.lower().replace(' ', '-')})")
+                st.markdown(f"* [Official {skill_base} Documentation/Tutorial](https://docs.mock.com/{skill_base.lower().replace(' ', '_')})")
+                st.markdown("---")
+        else:
+            st.success("Your last skills gap analysis showed no critical missing skills! Keep up the great work.")
+    else:
+        st.info("Run a skills gap analysis to see targeted learning paths.")
+    
+    st.markdown("---")
+    # --- General Resources ---
+    st.subheader("General Career & Interview Resources")
+    st.markdown("* [Interview Prep Guide: Behavioral Questions](https://www.mockprep.com/behavioral)")
+    st.markdown("* [Coding Interview Practice Platform](https://www.mockplatform.com/coding)")
+    st.markdown("* [Latest Tech News & Trends](https://www.mocktech.com/trends)")
+    
+# --------------------------------------------------------------------------------------
+# END NEW TABS
+# --------------------------------------------------------------------------------------
 
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION 
@@ -2214,24 +2543,35 @@ def candidate_dashboard():
     # Chatbot State
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
     if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} 
+    
+    # NEW TAB STATES
+    if "last_gap_analysis" not in st.session_state: st.session_state.last_gap_analysis = None
+    if "last_gap_analysis_jd" not in st.session_state: st.session_state.last_gap_analysis_jd = None
+    if "last_custom_summary" not in st.session_state: st.session_state.last_custom_summary = None
+    if "last_custom_summary_jd" not in st.session_state: st.session_state.last_custom_summary_jd = None
+    if "application_log" not in st.session_state: st.session_state.application_log = []
 
-    # --- Main Content with Tabs (7 Tabs) ---
-    tab_parsing, tab_cv_manage, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
+    # --- Main Content with Tabs (11 Tabs) ---
+    tab_parsing, tab_cv_manage, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot, tab_gap, tab_custom, tab_tracker, tab_resources = st.tabs(
         [
             "📄 Resume Parsing", 
-            "🛠️ CV Management", # New Tab
+            "🛠️ CV Management", 
             "✨ Parsed Data View", 
             "📚 JD Management", 
             "🎯 Batch JD Match", 
             "🔍 Filter JD", 
-            "🤖 Chatbot"
+            "🤖 Chatbot",
+            "📊 Skills Gap Analysis", # NEW 1
+            "⭐ Resume Customizer",    # NEW 2
+            "📧 Application Tracker",  # NEW 3
+            "💡 Resources & Paths"     # NEW 4
         ]
     )
     
     with tab_parsing:
         resume_parsing_tab()
         
-    with tab_cv_manage: # New Tab Content
+    with tab_cv_manage:
         cv_management_tab()
         
     with tab_data_view:
@@ -2248,6 +2588,18 @@ def candidate_dashboard():
         
     with tab_chatbot:
         chatbot_tab_content()
+
+    with tab_gap: # NEW 1
+        skills_gap_analysis_tab()
+        
+    with tab_custom: # NEW 2
+        resume_customizer_tab()
+
+    with tab_tracker: # NEW 3
+        application_tracker_tab()
+
+    with tab_resources: # NEW 4
+        resources_learning_paths_tab()
 
 
 # -------------------------
