@@ -118,7 +118,7 @@ class MockGroqClient:
                     
                     # NOTE: This mock output uses the strict format expected by the regex parser below.
                     mock_fit_output = f"""
-                    Overall Fit Score: {score}/10
+                    Overall Fit Score: [{score}]/10
                     
                     --- Section Match Analysis ---
                     Skills Match: {skills_p}%
@@ -994,28 +994,19 @@ def jd_batch_match_tab():
                         # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
-                        # --- FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
-                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
-                        
-                        section_analysis_match = re.search(
-                            r'--- Section Match Analysis ---\s*(.*?)\s*(?:Strengths/Matches|Overall Summary):', 
-                            fit_output, re.DOTALL | re.IGNORECASE
-                        )
-                        
-                        skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
-                        
-                        if section_analysis_match:
-                            section_text = section_analysis_match.group(1)
-                            
-                            skills_match = re.search(r'Skills\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
-                            experience_match = re.search(r'Experience\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
-                            education_match = re.search(r'Education\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
-                            
-                            if skills_match: skills_percent = skills_match.group(1)
-                            if experience_match: experience_percent = experience_match.group(1)
-                            if education_match: education_percent = education_match.group(1)
-                            
+                        # --- START FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
+                        # Overall Score: Matches one or two digits optionally surrounded by brackets, followed by /10
+                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?(\d{1,2})\]?\s*/10', fit_output, re.IGNORECASE)
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
+                        
+                        # Section Percentages: Look for the section name followed by one or two digits and a % sign.
+                        skills_match = re.search(r'Skills\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
+                        experience_match = re.search(r'Experience\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
+                        education_match = re.search(r'Education\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
+                        
+                        skills_percent = skills_match.group(1) if skills_match else 'N/A'
+                        experience_percent = experience_match.group(1) if experience_match else 'N/A'
+                        education_percent = education_match.group(1) if education_match else 'N/A'
                         
                         # 4. Check for API/Mock/Parsing errors
                         if "AI Evaluation Error" in fit_output:
