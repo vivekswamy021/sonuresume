@@ -77,10 +77,7 @@ class MockGroqClient:
                         "LLM Integration", "MLOps", "Data Visualization", 
                         "Docker", "Kubernetes", "Java", "API Services" 
                     ], 
-                    "education": [
-                        "B.S. Computer Science, Mock University, 2020",
-                        "High School Diploma, Mock Secondary, 2016"
-                    ], 
+                    "education": ["B.S. Computer Science, Mock University, 2020"], 
                     "experience": [
                         "Software Intern at Mock Solutions (2024-2025). Built deployment pipelines.", 
                         "Data Analyst at Test Corp (2022-2024). Managed SQL databases."
@@ -395,28 +392,26 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         file_name = "Generated_CV"
         st.session_state.current_parsing_source_name = file_name 
         
-        # Ensure 'experience' is compiled into a list of strings for compatibility with LLM output
+        # Ensure 'experience' and 'education' are compiled into a list of strings for compatibility with LLM output
+        
+        # 1. Experience
         compiled_experience_list = []
         for exp in parsed_data.get('experience', []):
             if isinstance(exp, dict):
-                # Format structured experience back into a standard string format for LLM input/full_text viewing
-                # NOTE: Using achievements as a raw string from the structure
                 exp_str = f"Job Title: {exp.get('role', 'N/A')}, Company: {exp.get('company', 'N/A')}, Dates: {exp.get('dates', 'N/A')}. CTC: {exp.get('ctc', 'N/A')}. Key Achievements: {exp.get('achievements', 'N/A')}"
                 compiled_experience_list.append(exp_str)
             else:
                 compiled_experience_list.append(str(exp))
-        
-        # Ensure 'education' is compiled into a list of strings for compatibility with LLM output
+                
+        # 2. Education
         compiled_education_list = []
         for edu in parsed_data.get('education', []):
             if isinstance(edu, dict):
-                # Format structured education back into a standard string format for LLM input/full_text viewing
-                edu_str = f"Degree: {edu.get('degree', 'N/A')} at {edu.get('institution', 'N/A')}, Dates: {edu.get('dates', 'N/A')}"
+                edu_str = f"Degree: {edu.get('degree', 'N/A')}, Institution: {edu.get('institution', 'N/A')}, University: {edu.get('university', 'N/A')}, Dates: {edu.get('dates', 'N/A')}"
                 compiled_education_list.append(edu_str)
             else:
                 compiled_education_list.append(str(edu))
-
-
+        
         # Replace the structured data with the compiled string list for 'full_text' generation
         data_for_text = parsed_data.copy()
         data_for_text['experience'] = compiled_experience_list
@@ -673,11 +668,10 @@ def evaluate_jd_fit(job_description, parsed_json):
     for edu in parsed_json.get('education', []):
         if isinstance(edu, dict):
             # Format structured education back into a standard string format for LLM input
-            edu_str = f"Degree: {edu.get('degree', 'N/A')} at {edu.get('institution', 'N/A')}, Dates: {edu.get('dates', 'N/A')}"
+            edu_str = f"Degree: {edu.get('degree', 'N/A')}, Institution: {edu.get('institution', 'N/A')}, University: {edu.get('university', 'N/A')}, Dates: {edu.get('dates', 'N/A')}"
             education_list_str.append(edu_str)
         else:
             education_list_str.append(str(edu))
-            
             
     relevant_resume_data = {
         'Skills': parsed_json.get('skills', 'Not found or empty'),
@@ -803,11 +797,6 @@ def resume_parsing_tab():
                         clear_interview_state()
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                         st.info("The parsed data is ready for matching.")
-                        
-                        # --- Update structured lists from parsed data ---
-                        st.session_state.structured_experience = initialize_experience_data(st.session_state.parsed)
-                        st.session_state.structured_education = initialize_education_data(st.session_state.parsed)
-                        
                         st.rerun() 
                     else:
                         st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
@@ -848,11 +837,6 @@ def resume_parsing_tab():
                         clear_interview_state()
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                         st.info("The parsed data is ready for matching.") 
-                        
-                        # --- Update structured lists from parsed data ---
-                        st.session_state.structured_experience = initialize_experience_data(st.session_state.parsed)
-                        st.session_state.structured_education = initialize_education_data(st.session_state.parsed)
-                        
                         st.rerun()
                     else:
                         st.error(f"Parsing failed: {result['error']}")
@@ -898,14 +882,13 @@ def initialize_experience_data(initial_data):
     """Initializes the session state structured experience list."""
     
     # If the session state already has the structured list, use it
-    if st.session_state.get('structured_experience') is not None and st.session_state.get('current_parsing_source_name') != 'Generated_CV':
-         # Only clear/re-initialize if it's not data from the CV form itself
-         pass
+    if st.session_state.get('structured_experience') is not None:
+         return st.session_state.structured_experience
          
     # Otherwise, try to convert the LLM-parsed list of strings into a structured format
     exp_list = initial_data.get("experience", [])
     
-    # If the LLM returned structured data (e.g., from a JSON file or the generated form), use it directly
+    # If the LLM returned structured data (e.g., from a JSON file), use it directly
     if exp_list and isinstance(exp_list, list) and exp_list and isinstance(exp_list[0], dict) and 'role' in exp_list[0]:
         return exp_list
         
@@ -942,51 +925,47 @@ def initialize_experience_data(initial_data):
         
     return structured_list
 
-# Helper function for Education (New)
+# Helper function to convert unstructured LLM-parsed education list (strings) 
+# into the new structured list of dicts format, falling back to string if needed.
 def initialize_education_data(initial_data):
     """Initializes the session state structured education list."""
     
     # If the session state already has the structured list, use it
-    if st.session_state.get('structured_education') is not None and st.session_state.get('current_parsing_source_name') != 'Generated_CV':
-         # Only clear/re-initialize if it's not data from the CV form itself
-         pass
+    if st.session_state.get('structured_education') is not None:
+         return st.session_state.structured_education
          
     edu_list = initial_data.get("education", [])
     
-    # If the LLM returned structured data (e.g., from a JSON file or the generated form), use it directly
+    # If the LLM returned structured data (e.g., from a JSON file), use it directly
     if edu_list and isinstance(edu_list, list) and edu_list and isinstance(edu_list[0], dict) and 'degree' in edu_list[0]:
         return edu_list
         
     # Attempt to parse unstructured strings. This is a best-effort approach.
     structured_list = []
     
-    # Pattern looks for 'Degree, Institution, Year' or 'Degree at Institution (Year)'
-    pattern = re.compile(r"(.+?)(?:,|\s+at\s+)(.+?)(?:,|\s+in\s+)([\d]{4}|[\d]{4}\s*-\s*(?:Present|[\d]{4}))")
-    
+    # Simple heuristic: Look for a comma or hyphen to split components
     for item in edu_list:
         if not isinstance(item, str): 
             item = str(item)
             
-        match = pattern.search(item)
+        # Example format: "B.S. Computer Science, Mock University, 2020"
+        parts = [p.strip() for p in re.split(r'[,\-]', item)]
         
-        if match:
-            degree, institution, dates = match.groups()
-        else:
-            # Fallback to simple structure
-            parts = [p.strip() for p in item.split(',')]
-            degree = parts[0] if parts else item
-            institution = parts[1] if len(parts) > 1 else "N/A"
-            dates = parts[2] if len(parts) > 2 else "N/A"
+        degree = parts[0] if len(parts) > 0 else "N/A"
+        institution = parts[1] if len(parts) > 1 else "N/A"
+        dates = parts[-1] if len(parts) > 0 and re.search(r'\d{4}', parts[-1]) else "N/A"
+        university = "N/A" # Cannot reliably parse a separate university field
 
         structured_list.append({
-            "degree": degree.strip(),
-            "institution": institution.strip(),
-            "dates": dates.strip(), 
+            "degree": degree,
+            "institution": institution,
+            "university": university,
+            "dates": dates
         })
         
     return structured_list
 
-# Main form generator function
+
 def generate_cv_form():
     """Allows candidates to enter details via a form to generate a structured CV."""
     
@@ -1004,7 +983,7 @@ def generate_cv_form():
             "certifications": [], "projects": [], "strength": []
         }
         
-    # --- CRITICAL: Initialize or load structured data ---
+    # --- CRITICAL: Initialize or load structured dynamic data ---
     if 'structured_experience' not in st.session_state:
         st.session_state.structured_experience = initialize_experience_data(initial_data)
         
@@ -1012,17 +991,19 @@ def generate_cv_form():
         st.session_state.structured_education = initialize_education_data(initial_data)
 
     
-    # --- EDUCATION SECTION (OUTSIDE MAIN FORM) ---
+    # --- DYNAMIC EDUCATION SECTION (NEW) ---
     st.markdown("---")
     st.markdown("### 2. Education")
-    st.markdown("Add your education entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
+    st.markdown("Add your education entries one by one.")
 
-    # Display existing education entries with removal button (MUST be outside st.form)
+    # Display existing education entries with removal button (MUST be outside st.form for st.button to work)
     if st.session_state.structured_education:
         for i, edu in enumerate(st.session_state.structured_education):
             col_display, col_remove = st.columns([4, 1])
             with col_display:
-                st.markdown(f"**{i+1}. {edu['degree']}** at **{edu['institution']}** ({edu['dates']})")
+                st.markdown(f"**{i+1}. {edu['degree']}** from **{edu['institution']}** ({edu['dates']})")
+                if edu['university'] and edu['university'] != 'N/A':
+                    st.caption(f"University: {edu['university']}")
             with col_remove:
                 if st.button("🗑️ Remove", key=f"remove_edu_{i}"):
                     st.session_state.structured_education.pop(i)
@@ -1030,42 +1011,44 @@ def generate_cv_form():
                     st.rerun() 
         st.markdown("---")
 
-    # --- MINI-FORM FOR ADDING NEW EDUCATION (SEPARATE FORM) ---
+    # --- MINI-FORM FOR ADDING NEW EDUCATION (Separate Form) ---
     st.markdown("##### Add New Education Entry")
     with st.form("add_education_mini_form", clear_on_submit=True):
-        col_new1, col_new2, col_new3 = st.columns([3, 3, 2])
+        col_new_edu1, col_new_edu2 = st.columns(2)
         
-        with col_new1:
-            new_degree = st.text_input("Degree/Certification Name", key="new_degree")
-        with col_new2:
-            new_institution = st.text_input("Institution/University Name", key="new_institution")
-        with col_new3:
-            new_dates_edu = st.text_input("Dates (e.g., 2018-2022)", key="new_dates_edu")
-
+        with col_new_edu1:
+            new_degree = st.text_input("Degree/Course Name (e.g., B.Tech, M.S. CS)", key="new_degree")
+            new_institution = st.text_input("College/Institute Name", key="new_institution")
+        with col_new_edu2:
+            new_university = st.text_input("University Name (optional)", key="new_university")
+            new_edu_dates = st.text_input("Dates From-To (e.g., 2018-2022)", key="new_edu_dates")
+        
         # Use st.form_submit_button for the button inside this mini-form
         add_edu_submitted = st.form_submit_button("➕ Add Education Entry", type="secondary", use_container_width=True)
 
         if add_edu_submitted:
-            if new_degree and new_institution and new_dates_edu:
+            if new_degree and new_institution and new_edu_dates:
                 new_entry = {
                     "degree": new_degree.strip(),
                     "institution": new_institution.strip(),
-                    "dates": new_dates_edu.strip(),
+                    "university": new_university.strip() or "N/A",
+                    "dates": new_edu_dates.strip(),
                 }
                 st.session_state.structured_education.append(new_entry)
-                st.success(f"Added Education: {new_degree} at {new_institution}")
+                st.success(f"Added: {new_degree} from {new_institution}")
+                # Rerun is triggered by the form submission itself
             else:
-                st.error("Please fill in Degree, Institution, and Dates.")
+                st.error("Please fill in Degree/Course, College/Institute, and Dates.")
         
     st.markdown("---")
-    # --- End Education Section ---
+    # --- End Dynamic Education Section ---
 
-
-    # --- EXPERIENCE SECTION (OUTSIDE MAIN FORM) ---
-    st.markdown("### 3. Work Experience")
+    
+    # --- DYNAMIC EXPERIENCE SECTION ---
+    st.markdown("### 3. Work Experience") # Re-numbered
     st.markdown("Add your work history entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
 
-    # Display existing experience entries with removal button (MUST be outside st.form for st.button to work)
+    # Display existing entries with removal button (MUST be outside st.form for st.button to work)
     if st.session_state.structured_experience:
         for i, exp in enumerate(st.session_state.structured_experience):
             # Use a container or columns to group the display and the remove button
@@ -1081,7 +1064,7 @@ def generate_cv_form():
                     st.rerun() 
         st.markdown("---")
 
-    # --- MINI-FORM FOR ADDING NEW EXPERIENCE (MUST BE A SEPARATE FORM) ---
+    # --- MINI-FORM FOR ADDING NEW EXPERIENCE (Separate Form) ---
     st.markdown("##### Add New Experience Entry")
     with st.form("add_experience_mini_form", clear_on_submit=True):
         col_new1, col_new2, col_new3 = st.columns([2, 1, 2])
@@ -1141,7 +1124,7 @@ def generate_cv_form():
             personal_details = st.text_area("Personal Summary/Objective", value=initial_data.get("personal_details", ""), key="cv_personal_details", height=100)
             
         st.markdown("---")
-        st.markdown("### 4. Core Skills and Certifications") # Re-numbered
+        st.markdown("### 4. Core Skills and Projects") # Re-numbered
 
         skills = st.text_area(
             "Skills (e.g., Python, AWS, SQL, Docker - one skill or tool per line or comma separated)",
@@ -1153,7 +1136,7 @@ def generate_cv_form():
         certifications = st.text_area(
             "Certifications (Certification Name, Provider, Year - one entry per line)",
             value=list_to_text(initial_data.get("certifications", [])), 
-            height=150,
+            height=100,
             key="cv_certifications"
         )
         
@@ -1759,7 +1742,7 @@ def parsed_data_tab():
             
             if st.session_state.excel_data:
                  st.markdown("### Extracted Spreadsheet Data (if applicable)")
-                 st.json(st.session_state.excel_data) # Corrected syntax here
+                 st.json(st.session_state.excel_data) 
                  
             st.markdown("---")
             st.markdown("##### Download Markdown Data")
@@ -2037,7 +2020,7 @@ def candidate_dashboard():
     if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
     if "structured_experience" not in st.session_state: st.session_state.structured_experience = []
     if "structured_education" not in st.session_state: st.session_state.structured_education = [] # NEW
-
+    
     # JD Management / Match State
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
