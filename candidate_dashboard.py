@@ -1025,10 +1025,18 @@ def initialize_certifications_data(initial_data):
         
     return structured_list
 
-
 def generate_cv_form():
     """Allows candidates to enter details via a form to generate a structured CV."""
     
+    import streamlit as st # Assuming st is imported at the top level in the actual script
+    
+    # Placeholder functions (You'll need to define these in your actual script)
+    def initialize_experience_data(data): return data.get('experience', [])
+    def initialize_education_data(data): return data.get('education', [])
+    def initialize_certifications_data(data): return data.get('certifications', [])
+    def initialize_projects_data(data): return data.get('projects', []) # New Initialization
+    def format_to_list(text): return [line.strip() for line in text.split('\n') if line.strip()]
+
     st.header("📝 Generate Your CV (Form Based)")
     st.markdown("Fill out the form below to create a structured CV/Resume, which will be loaded into the dashboard for analysis.")
 
@@ -1050,12 +1058,16 @@ def generate_cv_form():
     if 'structured_education' not in st.session_state:
         st.session_state.structured_education = initialize_education_data(initial_data)
         
-    # --- NEW: Initialize or load structured certifications data ---
     if 'structured_certifications' not in st.session_state:
         st.session_state.structured_certifications = initialize_certifications_data(initial_data)
 
-    
+    # --- NEW: Initialize or load structured projects data ---
+    if 'structured_projects' not in st.session_state:
+        st.session_state.structured_projects = initialize_projects_data(initial_data)
+        
+
     # --- DYNAMIC EDUCATION SECTION ---
+    # ... (Existing Education Section code) ...
     st.markdown("---")
     st.markdown("### 2. Education")
     st.markdown("Add your education entries one by one.")
@@ -1109,6 +1121,7 @@ def generate_cv_form():
 
     
     # --- DYNAMIC CERTIFICATIONS SECTION (NEW) ---
+    # ... (Existing Certifications Section code) ...
     st.markdown("### 3. Certifications") 
     st.markdown("Add your certifications one by one.")
 
@@ -1161,6 +1174,7 @@ def generate_cv_form():
 
     
     # --- DYNAMIC EXPERIENCE SECTION ---
+    # ... (Existing Experience Section code) ...
     st.markdown("### 4. Work Experience") # Re-numbered
     st.markdown("Add your work history entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
 
@@ -1225,6 +1239,61 @@ def generate_cv_form():
     st.markdown("---")
     # --- End Dynamic Experience Section ---
 
+
+    # --- DYNAMIC PROJECTS SECTION (NEW) ---
+    st.markdown("### 5. Projects") 
+    st.markdown("Add your key projects one by one.")
+
+    # Display existing projects entries with removal button
+    if st.session_state.structured_projects:
+        for i, project in enumerate(st.session_state.structured_projects):
+            col_display, col_remove = st.columns([4, 1])
+            with col_display:
+                st.markdown(f"**{i+1}. {project['name']}**")
+                st.caption(f"Description: {project['description'][:80]}...")
+                if project['app_link'] and project['app_link'] != 'N/A':
+                    st.caption(f"Link: {project['app_link']}")
+            with col_remove:
+                if st.button("🗑️ Remove", key=f"remove_proj_{i}"):
+                    st.session_state.structured_projects.pop(i)
+                    st.toast(f"Removed project entry {i+1}.")
+                    st.rerun() 
+        st.markdown("---")
+
+    # --- MINI-FORM FOR ADDING NEW PROJECT (Separate Form) ---
+    st.markdown("##### Add New Project Entry")
+    with st.form("add_projects_mini_form", clear_on_submit=True):
+        col_new_proj1, col_new_proj2 = st.columns(2)
+        
+        with col_new_proj1:
+            new_project_name = st.text_input("Project Name/Title", key="new_project_name")
+        with col_new_proj2:
+            new_app_link = st.text_input("Application/Demo Link (optional)", key="new_app_link")
+        
+        new_project_description = st.text_area(
+            "Project Description (Brief overview, technologies used, achievements)", 
+            key="new_project_description", 
+            height=100
+        )
+        
+        # Use st.form_submit_button for the button inside this mini-form
+        add_project_submitted = st.form_submit_button("➕ Add Project Entry", type="secondary", use_container_width=True)
+
+        if add_project_submitted:
+            if new_project_name and new_project_description:
+                new_entry = {
+                    "name": new_project_name.strip(),
+                    "description": new_project_description.strip(),
+                    "app_link": new_app_link.strip() or "N/A",
+                }
+                st.session_state.structured_projects.append(new_entry)
+                st.success(f"Added Project: {new_project_name}")
+                # Rerun is triggered by the form submission itself
+            else:
+                st.error("Please fill in Project Name and Description.")
+        
+    st.markdown("---")
+    # --- End Dynamic Projects Section ---
     
     # --- MAIN CV GENERATION FORM ---
     with st.form("cv_generation_form"):
