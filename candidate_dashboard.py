@@ -397,7 +397,8 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         for exp in parsed_data.get('experience', []):
             if isinstance(exp, dict):
                 # Format structured experience back into a standard string format for LLM input/full_text viewing
-                exp_str = f"{exp.get('role', 'N/A')} at {exp.get('company', 'N/A')} ({exp.get('dates', 'N/A')}). CTC: {exp.get('ctc', 'N/A')}. Achievements: {exp.get('achievements', 'N/A')}"
+                # NOTE: Using achievements as a raw string from the structure
+                exp_str = f"Job Title: {exp.get('role', 'N/A')}, Company: {exp.get('company', 'N/A')}, Dates: {exp.get('dates', 'N/A')}. CTC: {exp.get('ctc', 'N/A')}. Key Achievements: {exp.get('achievements', 'N/A')}"
                 compiled_experience_list.append(exp_str)
             else:
                 compiled_experience_list.append(str(exp))
@@ -868,7 +869,7 @@ def initialize_experience_data(initial_data):
     exp_list = initial_data.get("experience", [])
     
     # If the LLM returned structured data (e.g., from a JSON file), use it directly
-    if exp_list and isinstance(exp_list[0], dict):
+    if exp_list and isinstance(exp_list, list) and exp_list and isinstance(exp_list[0], dict) and 'role' in exp_list[0]:
         return exp_list
         
     # Attempt to parse unstructured strings. This is a best-effort approach.
@@ -926,6 +927,74 @@ def generate_cv_form():
     if 'structured_experience' not in st.session_state:
         st.session_state.structured_experience = initialize_experience_data(initial_data)
 
+    
+    # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE MAIN FORM) ---
+    st.markdown("### 2. Work Experience")
+    st.markdown("Add your work history entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
+
+    # Display existing entries with removal button (MUST be outside st.form for st.button to work)
+    if st.session_state.structured_experience:
+        for i, exp in enumerate(st.session_state.structured_experience):
+            # Use a container or columns to group the display and the remove button
+            col_display, col_remove = st.columns([4, 1])
+            with col_display:
+                st.markdown(f"**{i+1}. {exp['role']}** at **{exp['company']}** ({exp['dates']})")
+                st.caption(f"CTC: {exp['ctc']} | Achievements: {exp['achievements'][:80]}...")
+            with col_remove:
+                # The st.button is now correctly outside the main form context.
+                if st.button("🗑️ Remove", key=f"remove_exp_{i}"):
+                    st.session_state.structured_experience.pop(i)
+                    st.toast(f"Removed experience entry {i+1}.")
+                    st.rerun() 
+        st.markdown("---")
+
+    # --- MINI-FORM FOR ADDING NEW EXPERIENCE (MUST BE A SEPARATE FORM) ---
+    st.markdown("##### Add New Experience Entry")
+    with st.form("add_experience_mini_form", clear_on_submit=True):
+        col_new1, col_new2, col_new3 = st.columns([2, 1, 2])
+        
+        with col_new1:
+            new_role = st.text_input("Job Role", key="new_role")
+            new_dates = st.text_input("Dates (e.g., 2022 - Present)", key="new_dates")
+        with col_new2:
+             new_ctc = st.text_input("CTC (optional)", key="new_ctc")
+        with col_new3:
+            new_company = st.text_input("Company Name", key="new_company")
+            st.write("") # Spacer
+
+        new_achievements = st.text_area(
+            "Key Achievements/Responsibilities (Bullet points/separate by newline)", 
+            key="new_achievements", 
+            height=80
+        )
+        
+        # Use st.form_submit_button for the button inside this mini-form
+        add_submitted = st.form_submit_button("➕ Add Experience Entry", type="secondary", use_container_width=True)
+
+        if add_submitted:
+            if new_role and new_company and new_dates:
+                # Format achievements into a clean list of strings
+                achievement_list = format_to_list(new_achievements)
+                
+                new_entry = {
+                    "role": new_role.strip(),
+                    "company": new_company.strip(),
+                    "dates": new_dates.strip(),
+                    "ctc": new_ctc.strip() or "N/A",
+                    "achievements": "\n".join(achievement_list) # Store as multi-line string
+                }
+                st.session_state.structured_experience.append(new_entry)
+                st.success(f"Added: {new_role} at {new_company}")
+                # st.rerun() is not needed here as st.form_submit_button causes a rerun and clears the input
+
+            else:
+                st.error("Please fill in Job Role, Company Name, and Dates.")
+        
+    st.markdown("---")
+    # --- End Dynamic Experience Section ---
+
+    
+    # --- MAIN CV GENERATION FORM ---
     with st.form("cv_generation_form"):
         st.markdown("### 1. Personal Details")
         col1, col2 = st.columns(2)
@@ -939,66 +1008,7 @@ def generate_cv_form():
             personal_details = st.text_area("Personal Summary/Objective", value=initial_data.get("personal_details", ""), key="cv_personal_details", height=100)
             
         st.markdown("---")
-        st.markdown("### 2. Core Sections")
-
-        # --- Dynamic Experience List ---
-        st.markdown("#### Work Experience")
-        st.markdown("Add your work history entries one by one using the form below.")
-
-        # Display existing entries with removal button
-        if st.session_state.structured_experience:
-            for i, exp in enumerate(st.session_state.structured_experience):
-                st.markdown(f"**{i+1}. {exp['role']}** at **{exp['company']}** ({exp['dates']})")
-                st.caption(f"CTC: {exp['ctc']} | Achievements: {exp['achievements'][:80]}...")
-                if st.button(f"🗑️ Remove Entry {i+1}", key=f"remove_exp_{i}"):
-                    st.session_state.structured_experience.pop(i)
-                    st.rerun() 
-            st.markdown("---")
-
-        st.markdown("##### Add New Experience Entry")
-        col_new1, col_new2, col_new3, col_new4 = st.columns([1.5, 1, 1.5, 1])
-        
-        # NOTE: Using a simple key like `new_role` here works because the experience is 
-        # immediately stored in the list upon button click, and these inputs clear.
-        with col_new1:
-            new_role = st.text_input("Job Role", key="new_role")
-            new_company = st.text_input("Company Name", key="new_company")
-        with col_new2:
-            new_ctc = st.text_input("CTC (optional)", key="new_ctc")
-        with col_new3:
-            new_dates = st.text_input("Dates (e.g., 2022 - Present)", key="new_dates")
-        with col_new4:
-            st.write("") # Spacer
-            st.write("") # Spacer
-            st.write("") # Spacer
-
-        new_achievements = st.text_area(
-            "Key Achievements/Responsibilities (Bullet points/separate by newline)", 
-            key="new_achievements", 
-            height=80
-        )
-        
-        if st.button("➕ Add Experience Entry", key="add_experience_btn"):
-            if new_role and new_company and new_dates:
-                # Format achievements into a clean list of strings
-                achievement_list = format_to_list(new_achievements)
-                
-                new_entry = {
-                    "role": new_role.strip(),
-                    "company": new_company.strip(),
-                    "dates": new_dates.strip(),
-                    "ctc": new_ctc.strip() or "N/A",
-                    "achievements": "\n".join(achievement_list) # Store as multi-line string for ease of viewing/parsing back
-                }
-                st.session_state.structured_experience.append(new_entry)
-                st.success(f"Added: {new_role} at {new_company}")
-                # Clear inputs by rerunning after button press
-                st.rerun() 
-            else:
-                st.error("Please fill in Job Role, Company Name, and Dates.")
-        
-        st.markdown("---")
-        # --- End Dynamic Experience List ---
+        st.markdown("### 3. Core Skills and Education") # Re-numbered
 
         skills = st.text_area(
             "Skills (e.g., Python, AWS, SQL, Docker - one skill or tool per line or comma separated)",
@@ -1030,6 +1040,7 @@ def generate_cv_form():
             key="cv_projects"
         )
 
+        # The main submit button for the entire CV data
         submitted = st.form_submit_button("💾 Generate and Load CV Data", type="primary", use_container_width=True)
 
     if submitted:
@@ -1066,6 +1077,7 @@ def generate_cv_form():
             st.session_state.parsed['name'] = result['name'] 
             
             # Re-initialize structured_experience based on the newly loaded data
+            # NOTE: This step is crucial to ensure the display syncs after load
             st.session_state.structured_experience = initialize_experience_data(st.session_state.parsed)
             
             clear_interview_state()
@@ -1623,7 +1635,7 @@ def parsed_data_tab():
             
             if st.session_state.excel_data:
                  st.markdown("### Extracted Spreadsheet Data (if applicable)")
-                 st.json(st.session_state.excel_data) # Corrected syntax here
+                 st.json(st.session_data.excel_data) # Corrected syntax here
                  
             st.markdown("---")
             st.markdown("##### Download Markdown Data")
