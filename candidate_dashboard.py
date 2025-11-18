@@ -82,7 +82,7 @@ class MockGroqClient:
                         "Software Intern at Mock Solutions (2024-2025). Built deployment pipelines.", 
                         "Data Analyst at Test Corp (2022-2024). Managed SQL databases."
                     ], 
-                    "certifications": ["Mock Certification in AWS Cloud"], 
+                    "certifications": ["Mock Certification in AWS Cloud, Provider: AWS, Year: 2023"], 
                     "projects": ["Mock Project: Built an MLOps pipeline using Docker and Kubernetes."], 
                     "strength": ["Mock Strength"], 
                 }
@@ -219,7 +219,7 @@ def extract_content(file_type, file_content_bytes, file_name):
                 text = "--- JSON Content Start ---\n" + text + "\n--- JSON Content End ---"
             except UnicodeDecodeError:
                 return f"[Error] JSON content extraction failed: Unicode Decode Error.", None
-        
+            
         elif file_type == 'excel':
             try:
                 if file_name.endswith('.csv'):
@@ -392,7 +392,7 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         file_name = "Generated_CV"
         st.session_state.current_parsing_source_name = file_name 
         
-        # Ensure 'experience' and 'education' are compiled into a list of strings for compatibility with LLM output
+        # Ensure 'experience', 'education', and 'certifications' are compiled into a list of strings for compatibility with LLM output
         
         # 1. Experience
         compiled_experience_list = []
@@ -411,11 +411,21 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
                 compiled_education_list.append(edu_str)
             else:
                 compiled_education_list.append(str(edu))
+                
+        # 3. Certifications (New)
+        compiled_certifications_list = []
+        for cert in parsed_data.get('certifications', []):
+            if isinstance(cert, dict):
+                cert_str = f"Certification Name: {cert.get('name', 'N/A')}, Provider: {cert.get('provider', 'N/A')}, Course: {cert.get('course_name', 'N/A')}, Date: {cert.get('date', 'N/A')}"
+                compiled_certifications_list.append(cert_str)
+            else:
+                compiled_certifications_list.append(str(cert))
         
         # Replace the structured data with the compiled string list for 'full_text' generation
         data_for_text = parsed_data.copy()
         data_for_text['experience'] = compiled_experience_list
         data_for_text['education'] = compiled_education_list
+        data_for_text['certifications'] = compiled_certifications_list # Use compiled list
 
         compiled_text = ""
         for k, v in data_for_text.items():
@@ -673,10 +683,21 @@ def evaluate_jd_fit(job_description, parsed_json):
         else:
             education_list_str.append(str(edu))
             
+    # 3. Format structured certifications list back into a string list
+    certifications_list_str = []
+    for cert in parsed_json.get('certifications', []):
+        if isinstance(cert, dict):
+            # Format structured cert back into a standard string format for LLM input
+            cert_str = f"Certification Name: {cert.get('name', 'N/A')}, Provider: {cert.get('provider', 'N/A')}, Course: {cert.get('course_name', 'N/A')}, Date: {cert.get('date', 'N/A')}"
+            certifications_list_str.append(cert_str)
+        else:
+            certifications_list_str.append(str(cert))
+            
     relevant_resume_data = {
         'Skills': parsed_json.get('skills', 'Not found or empty'),
         'Experience': experience_list_str,
         'Education': education_list_str,
+        'Certifications': certifications_list_str
     }
     resume_summary = json.dumps(relevant_resume_data, indent=2)
 
@@ -895,7 +916,6 @@ def initialize_experience_data(initial_data):
     # Attempt to parse unstructured strings. This is a best-effort approach.
     structured_list = []
     
-    # Simple regex to try and find Role/Company/Dates (best effort)
     # Pattern looks for 'Role at Company (Date-Date)'
     pattern = re.compile(r"(.+?)\s+at\s+(.+?)\s+\((.+?)\)")
     
@@ -965,6 +985,46 @@ def initialize_education_data(initial_data):
         
     return structured_list
 
+# Helper function to convert unstructured LLM-parsed certifications list (strings) 
+# into the new structured list of dicts format, falling back to string if needed.
+def initialize_certifications_data(initial_data):
+    """Initializes the session state structured certifications list."""
+    
+    # If the session state already has the structured list, use it
+    if st.session_state.get('structured_certifications') is not None:
+         return st.session_state.structured_certifications
+         
+    cert_list = initial_data.get("certifications", [])
+    
+    # If the LLM returned structured data (e.g., from a JSON file), use it directly
+    if cert_list and isinstance(cert_list, list) and cert_list and isinstance(cert_list[0], dict) and 'name' in cert_list[0]:
+        return cert_list
+        
+    # Attempt to parse unstructured strings. This is a best-effort approach.
+    structured_list = []
+    
+    # Simple heuristic: Split by common delimiters
+    for item in cert_list:
+        if not isinstance(item, str): 
+            item = str(item)
+            
+        # Example format: "AWS Certified Cloud Practitioner, AWS, 2023"
+        parts = [p.strip() for p in re.split(r'[,\-]', item)]
+        
+        cert_name = parts[0] if len(parts) > 0 else "N/A"
+        provider = parts[1] if len(parts) > 1 else "N/A"
+        date = parts[-1] if len(parts) > 0 and re.search(r'\d{4}', parts[-1]) else "N/A"
+        course_name = "N/A" # Cannot reliably parse a separate course field
+
+        structured_list.append({
+            "name": cert_name,
+            "provider": provider,
+            "course_name": course_name,
+            "date": date
+        })
+        
+    return structured_list
+
 
 def generate_cv_form():
     """Allows candidates to enter details via a form to generate a structured CV."""
@@ -989,9 +1049,13 @@ def generate_cv_form():
         
     if 'structured_education' not in st.session_state:
         st.session_state.structured_education = initialize_education_data(initial_data)
+        
+    # --- NEW: Initialize or load structured certifications data ---
+    if 'structured_certifications' not in st.session_state:
+        st.session_state.structured_certifications = initialize_certifications_data(initial_data)
 
     
-    # --- DYNAMIC EDUCATION SECTION (NEW) ---
+    # --- DYNAMIC EDUCATION SECTION ---
     st.markdown("---")
     st.markdown("### 2. Education")
     st.markdown("Add your education entries one by one.")
@@ -1044,8 +1108,60 @@ def generate_cv_form():
     # --- End Dynamic Education Section ---
 
     
+    # --- DYNAMIC CERTIFICATIONS SECTION (NEW) ---
+    st.markdown("### 3. Certifications") 
+    st.markdown("Add your certifications one by one.")
+
+    # Display existing certifications entries with removal button
+    if st.session_state.structured_certifications:
+        for i, cert in enumerate(st.session_state.structured_certifications):
+            col_display, col_remove = st.columns([4, 1])
+            with col_display:
+                st.markdown(f"**{i+1}. {cert['name']}** from **{cert['provider']}** (Date: {cert['date']})")
+                if cert['course_name'] and cert['course_name'] != 'N/A':
+                    st.caption(f"Course: {cert['course_name']}")
+            with col_remove:
+                if st.button("🗑️ Remove", key=f"remove_cert_{i}"):
+                    st.session_state.structured_certifications.pop(i)
+                    st.toast(f"Removed certification entry {i+1}.")
+                    st.rerun() 
+        st.markdown("---")
+
+    # --- MINI-FORM FOR ADDING NEW CERTIFICATION (Separate Form) ---
+    st.markdown("##### Add New Certification Entry")
+    with st.form("add_certifications_mini_form", clear_on_submit=True):
+        col_new_cert1, col_new_cert2 = st.columns(2)
+        
+        with col_new_cert1:
+            new_cert_name = st.text_input("Certification Name/Title (e.g., Cloud Architect)", key="new_cert_name")
+            new_provider = st.text_input("Provider/Given By (e.g., AWS, Coursera)", key="new_provider")
+        with col_new_cert2:
+            new_course_name = st.text_input("Course Name/Topic (optional)", key="new_course_name")
+            new_cert_date = st.text_input("Received Date (e.g., June 2024 or 2024)", key="new_cert_date")
+        
+        # Use st.form_submit_button for the button inside this mini-form
+        add_cert_submitted = st.form_submit_button("➕ Add Certification Entry", type="secondary", use_container_width=True)
+
+        if add_cert_submitted:
+            if new_cert_name and new_provider and new_cert_date:
+                new_entry = {
+                    "name": new_cert_name.strip(),
+                    "provider": new_provider.strip(),
+                    "course_name": new_course_name.strip() or "N/A",
+                    "date": new_cert_date.strip(),
+                }
+                st.session_state.structured_certifications.append(new_entry)
+                st.success(f"Added: {new_cert_name} from {new_provider}")
+                # Rerun is triggered by the form submission itself
+            else:
+                st.error("Please fill in Certification Name, Provider/Given By, and Received Date.")
+        
+    st.markdown("---")
+    # --- End Dynamic Certifications Section ---
+
+    
     # --- DYNAMIC EXPERIENCE SECTION ---
-    st.markdown("### 3. Work Experience") # Re-numbered
+    st.markdown("### 4. Work Experience") # Re-numbered
     st.markdown("Add your work history entries one by one. Use the 'Remove' buttons below the entries to delete existing ones.")
 
     # Display existing entries with removal button (MUST be outside st.form for st.button to work)
@@ -1124,7 +1240,7 @@ def generate_cv_form():
             personal_details = st.text_area("Personal Summary/Objective", value=initial_data.get("personal_details", ""), key="cv_personal_details", height=100)
             
         st.markdown("---")
-        st.markdown("### 4. Core Skills and Projects") # Re-numbered
+        st.markdown("### 5. Core Skills and Projects") # Re-numbered
 
         skills = st.text_area(
             "Skills (e.g., Python, AWS, SQL, Docker - one skill or tool per line or comma separated)",
@@ -1133,12 +1249,7 @@ def generate_cv_form():
             key="cv_skills"
         )
         
-        certifications = st.text_area(
-            "Certifications (Certification Name, Provider, Year - one entry per line)",
-            value=list_to_text(initial_data.get("certifications", [])), 
-            height=100,
-            key="cv_certifications"
-        )
+        # Certifications text area is now removed, but we keep the other text area here
         
         projects = st.text_area(
             "Projects (Project Name, Description, Technologies Used - one project per line)",
@@ -1164,9 +1275,9 @@ def generate_cv_form():
             "github": github,
             "personal_details": personal_details,
             "skills": format_to_list(skills),
-            "education": st.session_state.structured_education, # Use the structured list
-            "experience": st.session_state.structured_experience, # Use the structured list
-            "certifications": format_to_list(certifications),
+            "education": st.session_state.structured_education, 
+            "experience": st.session_state.structured_experience, 
+            "certifications": st.session_state.structured_certifications, # Use the structured list
             "projects": format_to_list(projects),
             # 'strength' field is often implied/part of summary, but we include it for structure consistency
             "strength": format_to_list(initial_data.get("strength", []))
@@ -1183,9 +1294,10 @@ def generate_cv_form():
             st.session_state.excel_data = result['excel_data'] 
             st.session_state.parsed['name'] = result['name'] 
             
-            # Re-initialize structured_experience/education based on the newly loaded data
+            # Re-initialize structured states based on the newly loaded data
             st.session_state.structured_experience = initialize_experience_data(st.session_state.parsed)
             st.session_state.structured_education = initialize_education_data(st.session_state.parsed)
+            st.session_state.structured_certifications = initialize_certifications_data(st.session_state.parsed) # NEW
             
             clear_interview_state()
             
@@ -2019,7 +2131,8 @@ def candidate_dashboard():
     if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
     if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
     if "structured_experience" not in st.session_state: st.session_state.structured_experience = []
-    if "structured_education" not in st.session_state: st.session_state.structured_education = [] # NEW
+    if "structured_education" not in st.session_state: st.session_state.structured_education = [] 
+    if "structured_certifications" not in st.session_state: st.session_state.structured_certifications = [] # NEW
     
     # JD Management / Match State
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
