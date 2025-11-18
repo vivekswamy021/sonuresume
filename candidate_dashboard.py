@@ -6,9 +6,7 @@ import json
 import traceback
 import re 
 from dotenv import load_dotenv 
-from datetime import datetime
 from io import BytesIO 
-import time
 import pandas as pd
 import base64 
 
@@ -29,7 +27,7 @@ STARTER_KEYWORDS = {
 # --- End Default/Mock Data ---
 
 
-# --- Define MockGroqClient globally ---
+# --- Define MockGroqClient globally (Necessary for testing without API Key) ---
 
 class MockGroqClient:
     """Mock client for local testing when Groq is not available or key is missing."""
@@ -42,6 +40,7 @@ class MockGroqClient:
                 # Check if it's a JD Q&A call
                 if "Answer the following question about the Job Description concisely and directly." in prompt_content:
                     question_match = re.search(r'Question:\s*(.*)', prompt_content)
+                    # Simple mock logic based on question
                     question = question_match.group(1).strip() if question_match else "a question"
                     
                     if 'role' in question.lower():
@@ -144,27 +143,24 @@ class MockGroqClient:
 
         return FitCompletions()
 
+# Initialize the Groq client or the Mock client based on the environment variable
 try:
-    # Attempt to import the real Groq client
     from groq import Groq
     
     if GROQ_API_KEY:
         client = Groq(api_key=GROQ_API_KEY)
-        # Check if the client is really ready or just a placeholder
-        if client:
-             class GroqPlaceholder(Groq): 
-                 def __init__(self, api_key): 
-                     super().__init__(api_key=api_key)
-                     self.client_ready = True
-             client = GroqPlaceholder(api_key=GROQ_API_KEY)
-        else:
-            raise ValueError("Groq client not initialized successfully, falling back to Mock.")
-
-    if not GROQ_API_KEY:
+        # Custom flag to indicate a successful connection attempt to the real client
+        class GroqPlaceholder(Groq): 
+             def __init__(self, api_key): 
+                 super().__init__(api_key=api_key)
+                 self.client_ready = True
+        client = GroqPlaceholder(api_key=GROQ_API_KEY)
+    else:
+        # Fallback if key is missing but Groq is installed
         raise ValueError("GROQ_API_KEY not set. Using Mock Client.")
         
 except (ImportError, ValueError, NameError) as e:
-    # Fallback to Mock Client
+    # Fallback to Mock Client if import fails or key is missing
     client = MockGroqClient()
     
 # --- END API SETUP ---
@@ -172,9 +168,7 @@ except (ImportError, ValueError, NameError) as e:
 
 # --- Utility Functions ---
 
-def go_to(page_name):
-    """Changes the current page in Streamlit's session state."""
-    st.session_state.page = page_name
+# Removed `go_to` and login/logout logic as requested
 
 def get_file_type(file_name):
     """Identifies the file type based on its extension, handling common text formats."""
@@ -211,7 +205,6 @@ def extract_content(file_type, file_content_bytes, file_name):
         
         elif file_type == 'json':
             try:
-                # Wrap JSON content so LLM parsing function can detect and use it
                 text = file_content_bytes.decode('utf-8')
                 text = "--- JSON Content Start ---\n" + text + "\n--- JSON Content End ---"
             except UnicodeDecodeError:
@@ -226,6 +219,7 @@ def extract_content(file_type, file_content_bytes, file_name):
                     all_sheets_data = {}
                     for sheet_name in xls.sheet_names:
                         df = pd.read_excel(xls, sheet_name=sheet_name)
+                        # Store as JSON strings for LLM input
                         all_sheets_data[sheet_name] = df.to_json(orient='records') 
                         
                     excel_data = all_sheets_data 
@@ -325,6 +319,7 @@ def parse_resume_with_llm(text):
         if json_match:
             json_str = json_match.group(0).strip()
             
+            # Remove markdown code fences if present
             if json_str.startswith('```json'):
                 json_str = json_str[len('```json'):]
             if json_str.endswith('```'):
@@ -353,17 +348,12 @@ def parse_resume_with_llm(text):
         error_msg = f"LLM API interaction error: {e}"
         return {"name": get_fallback_name(), "error": error_msg}
 
-# -----------------------------------------------------------
-# END ADAPTED FUNCTION
-# -----------------------------------------------------------
-
 
 # --- HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
 
 def clear_interview_state():
-    """Clears all session state variables related to interview/match sessions."""
-    if 'interview_chat_history' in st.session_state: del st.session_state['interview_chat_history']
-    if 'current_interview_jd' in st.session_state: del st.session_state['current_interview_jd']
+    """Clears all session state variables related to match sessions."""
+    # Retain the Q&A history states, only clear match-specific states
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     
@@ -582,11 +572,9 @@ def evaluate_jd_fit(job_description, parsed_json):
     Evaluates how well a resume fits a given job description, 
     including section-wise scores, by calling the Groq LLM API.
     """
-    # Use the client object, which can be the real Groq client or the MockGroqClient
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if parsed_json.get('error') is not None: 
-         # This message is now explicitly caught in the match_batch_tab to set the score to 'Cannot evaluate'
          return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
 
 
@@ -976,7 +964,6 @@ def jd_batch_match_tab():
             st.warning("Please select at least one Job Description to run the analysis.")
             
         elif not is_resume_parsed:
-             # The warning above will already be shown, but we prevent the loop from running
              st.warning("Please **upload and parse your resume** successfully first.")
 
         else:
@@ -1571,16 +1558,10 @@ def chatbot_tab_content():
 # -------------------------
 
 def candidate_dashboard():
-    st.title("🧑‍💻 Candidate Dashboard")
+    # Set page config once at the start
+    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
     
-    col_header, col_logout = st.columns([4, 1])
-    with col_logout:
-        if st.button("🚪 Log Out", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key not in ['page', 'logged_in', 'user_type']:
-                    del st.session_state[key]
-            go_to("login")
-            st.rerun() 
+    st.title("🧑‍💻 Candidate Dashboard")
             
     st.markdown("---")
 
@@ -1601,7 +1582,7 @@ def candidate_dashboard():
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
     if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} # Keyed by JD name
 
-    # --- Main Content with Tabs (NEW TAB ADDED) ---
+    # --- Main Content with Tabs (ALL TABS KEPT) ---
     tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
         ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot"]
     )
@@ -1626,38 +1607,9 @@ def candidate_dashboard():
 
 
 # -------------------------
-# MOCK LOGIN AND MAIN APP LOGIC 
+# MAIN APP EXECUTION (Simplified)
 # -------------------------
 
-def login_page():
-    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
-    st.title("Welcome to PragyanAI")
-    st.header("Login")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username (Enter 'candidate')")
-        password = st.text_input("Password (Any value)", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            if username.lower() == "candidate":
-                st.session_state.logged_in = True
-                st.session_state.user_type = "candidate"
-                go_to("candidate_dashboard")
-                st.rerun()
-            else:
-                st.error("Invalid username. Please use 'candidate'.")
-
-# --- Main App Execution ---
-
 if __name__ == '__main__':
-    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
-
-    if 'page' not in st.session_state: st.session_state.page = "login"
-    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-    if 'user_type' not in st.session_state: st.session_state.user_type = None
-    
-    if st.session_state.logged_in and st.session_state.user_type == "candidate":
-        candidate_dashboard()
-    else:
-        login_page()
+    # Start the dashboard directly, assuming the user is already "logged in" for simplicity
+    candidate_dashboard()
