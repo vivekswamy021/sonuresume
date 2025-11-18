@@ -62,6 +62,7 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         
     
     # 2. Define the structured placeholder data (Robust Default)
+    # Ensure this data structure matches what the form expects for list fields
     default_structured_experience = [
         {
             "company": "Prgayan AI", 
@@ -377,28 +378,20 @@ def cv_management_tab_content():
         "structured_education": [] 
     }
     
-    # *** CRITICAL FIX: Ensure cv_form_data is correctly initialized from parsed data ***
-    if "cv_form_data" not in st.session_state or st.session_state.cv_form_data.get('name') == "":
+    # Initialization/Sync Block (CRITICAL FIX): Ensure cv_form_data is a copy of the *latest* parsed data
+    # only if the parsed data has changed significantly (e.g., after parsing a new file).
+    if "cv_form_data" not in st.session_state or st.session_state.get('parsed_synced_flag') is False:
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
-            # Load from successful parse
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            
-            # Ensure structured lists exist, prioritizing the explicit structured keys if available
+            # Ensure structured lists exist, falling back to main lists if needed
             st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('structured_experience', st.session_state.cv_form_data.get('experience', []))
             st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('structured_certifications', st.session_state.cv_form_data.get('certifications', []))
             st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('structured_education', st.session_state.cv_form_data.get('education', []))
-            
-            # Ensure the structure is a list of dicts/lists
-            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_experience']):
-                st.session_state.cv_form_data['structured_experience'] = []
-            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_certifications']):
-                st.session_state.cv_form_data['structured_certifications'] = []
-            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_education']):
-                st.session_state.cv_form_data['structured_education'] = []
         else:
-            # Load default empty data
             st.session_state.cv_form_data = default_parsed
             
+        st.session_state.parsed_synced_flag = True # Set flag after sync
+
     # CRITICAL: Ensure lists are initialized correctly for dynamic forms
     if 'structured_experience' not in st.session_state.cv_form_data or not isinstance(st.session_state.cv_form_data['structured_experience'], list):
          st.session_state.cv_form_data['structured_experience'] = []
@@ -406,14 +399,16 @@ def cv_management_tab_content():
          st.session_state.cv_form_data['structured_certifications'] = []
     if 'structured_education' not in st.session_state.cv_form_data or not isinstance(st.session_state.cv_form_data['structured_education'], list): 
          st.session_state.cv_form_data['structured_education'] = []
+    # Ensure top-level lists are lists
     if not isinstance(st.session_state.cv_form_data.get('skills'), list):
          st.session_state.cv_form_data['skills'] = []
     if not isinstance(st.session_state.cv_form_data.get('projects'), list):
          st.session_state.cv_form_data['projects'] = []
-
+    if not isinstance(st.session_state.cv_form_data.get('strength'), list):
+         st.session_state.cv_form_data['strength'] = []
+    
     
     # --- CV Builder Form (SINGLE BLOCK) ---
-    # This form collects all static data (Personal, Skills, Projects, Strength)
     with st.form("cv_builder_form", clear_on_submit=False):
         
         # --- 1. PERSONAL, CONTACT, and SUMMARY DETAILS ---
@@ -422,19 +417,19 @@ def cv_management_tab_content():
         with col1:
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
-                value=st.session_state.cv_form_data['name'], 
+                value=st.session_state.cv_form_data.get('name', ''), 
                 key="cv_name_input"
             ).strip() 
         with col2:
             st.session_state.cv_form_data['email'] = st.text_input(
                 "Email Address", 
-                value=st.session_state.cv_form_data['email'], 
+                value=st.session_state.cv_form_data.get('email', ''), 
                 key="cv_email_input"
             ).strip() 
         with col3:
             st.session_state.cv_form_data['phone'] = st.text_input(
                 "Phone Number", 
-                value=st.session_state.cv_form_data['phone'], 
+                value=st.session_state.cv_form_data.get('phone', ''), 
                 key="cv_phone_input"
             ).strip() 
         
@@ -459,50 +454,56 @@ def cv_management_tab_content():
             key="cv_personal_details_input"
         ).strip() 
         
-        # --- 2. SKILLS (Inside form) ---
+        # --- 2. SKILLS (Inside form - FIXED: List to Text conversion for display) ---
         st.markdown("---")
         st.subheader("2. Key Skills (One Item per Line)")
 
-        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
+        # Convert list to newline-separated string for text area display
+        skills_text_display = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
+        
         new_skills_text = st.text_area(
             "Technical and Soft Skills", 
-            value=skills_text,
+            value=skills_text_display,
             height=100,
             key="cv_skills_input_form" 
         )
-        # Update session state on form submit
+        # Update session state on form submit (Text area content is converted back to a list)
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
         # --- 3. EDUCATION PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("3. Education Details")
-        st.info("⚠️ **Education** is managed using the dynamic 'Add Entry' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
+        st.info(f"Loaded Entries: **{len(st.session_state.cv_form_data.get('structured_education', []))}**. Use the dynamic 'Add Entry' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
         
         # --- 4. CERTIFICATIONS PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("4. Certifications")
-        st.info("⚠️ **Certifications** are managed using the dynamic 'Add Certificate' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
+        st.info(f"Loaded Entries: **{len(st.session_state.cv_form_data.get('structured_certifications', []))}**. Use the dynamic 'Add Certificate' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
         
-        # --- 5. PROJECTS (Inside form) ---
+        # --- 5. PROJECTS (Inside form - FIXED: List to Text conversion for display) ---
         st.markdown("---")
         st.subheader("5. Projects (One Item per Line)")
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+        
+        projects_text_display = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+        
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
-            value=projects_text,
+            value=projects_text_display,
             height=100,
             key="cv_projects_input_form"
         )
         # Update session state on form submit
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
 
-        # --- 6. STRENGTHS (Inside form) ---
+        # --- 6. STRENGTHS (Inside form - FIXED: List to Text conversion for display) ---
         st.markdown("---")
         st.subheader("6. Strengths (One Item per Line)")
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+        
+        strength_text_display = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+        
         new_strength_text = st.text_area(
             "Key Personal Qualities", 
-            value=strength_text,
+            value=strength_text_display,
             height=70,
             key="cv_strength_input_form"
         )
@@ -512,7 +513,7 @@ def cv_management_tab_content():
         # --- 7. EXPERIENCE PLACEHOLDER (Instruct user to use external forms) ---
         st.markdown("---")
         st.subheader("7. Professional Experience")
-        st.info("⚠️ **Experience** is managed using the dynamic 'Add Experience' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
+        st.info(f"Loaded Entries: **{len(st.session_state.cv_form_data.get('structured_experience', []))}**. Use the dynamic 'Add Experience' form *outside* this main form below. Click 'Generate and Load' at the end to include the data.")
         
         # CRITICAL: The submit button is ONLY placed here, inside the one form block.
         st.markdown("---")
@@ -559,6 +560,7 @@ def cv_management_tab_content():
         st.session_state.candidate_match_results = []
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
+        st.session_state.parsed_synced_flag = True # Ensure this is true after submission
 
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
         
@@ -594,6 +596,10 @@ def cv_management_tab_content():
             "type": score_type_val
         }
         
+        # Ensure the list exists before appending
+        if 'structured_education' not in st.session_state.cv_form_data:
+            st.session_state.cv_form_data['structured_education'] = []
+            
         st.session_state.cv_form_data['structured_education'].append(new_entry)
         
         # Clear temp state/widget values to refresh the input fields
@@ -650,7 +656,10 @@ def cv_management_tab_content():
         
         with col_fy:
             current_from_year = st.session_state.get("temp_edu_from_year_key", str(current_year))
-            from_year_index = year_options.index(current_from_year) if current_from_year in year_options else 0
+            try:
+                from_year_index = year_options.index(current_from_year)
+            except ValueError:
+                from_year_index = 0
             
             st.selectbox(
                 "From Year", 
@@ -662,7 +671,10 @@ def cv_management_tab_content():
         with col_ty:
             to_year_options = ["Present"] + year_options
             current_to_year = st.session_state.get("temp_edu_to_year_key", "Present")
-            to_year_index = to_year_options.index(current_to_year) if current_to_year in to_year_options else 0
+            try:
+                to_year_index = to_year_options.index(current_to_year)
+            except ValueError:
+                to_year_index = 0
             
             st.selectbox(
                 "To Year", 
@@ -681,10 +693,16 @@ def cv_management_tab_content():
                 placeholder="e.g., 8.5 or 90"
             )
         with col_st:
+            score_type_options = ["CGPA", "Percentage", "Grade"]
+            try:
+                score_type_index = score_type_options.index(st.session_state.get("temp_edu_type_key", "CGPA"))
+            except ValueError:
+                score_type_index = 0
+                
             st.selectbox(
                 "Type",
-                options=["CGPA", "Percentage", "Grade"],
-                index=["CGPA", "Percentage", "Grade"].index(st.session_state.get("temp_edu_type_key", "CGPA")),
+                options=score_type_options,
+                index=score_type_index,
                 key="temp_edu_type_key",
                 label_visibility='collapsed'
             )
@@ -732,6 +750,10 @@ def cv_management_tab_content():
             "issue_date": issue_date_val
         }
         
+        # Ensure the list exists before appending
+        if 'structured_certifications' not in st.session_state.cv_form_data:
+            st.session_state.cv_form_data['structured_certifications'] = []
+            
         st.session_state.cv_form_data['structured_certifications'].append(new_entry)
         
         st.session_state["temp_cert_title_key"] = ""
@@ -825,6 +847,10 @@ def cv_management_tab_content():
             "responsibilities": responsibilities_val
         }
         
+        # Ensure the list exists before appending
+        if 'structured_experience' not in st.session_state.cv_form_data:
+            st.session_state.cv_form_data['structured_experience'] = []
+            
         st.session_state.cv_form_data['structured_experience'].append(new_entry)
         
         # Clear temp state/widget values to refresh the input fields
@@ -941,15 +967,14 @@ def cv_management_tab_content():
     st.markdown("---")
     st.subheader("9. Loaded CV Data Preview and Download")
     
-    # *** CRITICAL FIX: Check the main parsed state for display ***
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
-        # Use the data that was loaded/generated to ensure consistency
-        data_to_display = st.session_state.parsed.copy()
-        
         EXCLUDE_KEYS_PREVIEW = ["structured_experience", "structured_certifications", "structured_education"]
+        
+        # Use the *latest* state of the parsed data (which was updated on form submit or parsing)
+        # We need to filter out the structured list duplicates before passing to the display functions
         filled_data_for_preview = {
-            k: v for k, v in data_to_display.items() 
+            k: v for k, v in st.session_state.parsed.items() 
             if v and k not in EXCLUDE_KEYS_PREVIEW and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
         }
         
@@ -1170,6 +1195,9 @@ def candidate_dashboard():
     if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
     if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = ""
     
+    # Flag to control sync from 'parsed' to 'cv_form_data' after a successful parsing
+    if 'parsed_synced_flag' not in st.session_state: st.session_state.parsed_synced_flag = False
+
     # Initialize main cv_form_data structure
     if "cv_form_data" not in st.session_state: 
         st.session_state.cv_form_data = {
@@ -1308,15 +1336,12 @@ def candidate_dashboard():
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             
-                            # *** CRITICAL FIX: Ensure form data is updated after parsing for immediate display ***
+                            # CRITICAL FIX: Ensure full sync and set flag
                             st.session_state.cv_form_data = st.session_state.parsed.copy() 
-                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('experience', [])
-                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('certifications', [])
-                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('education', [])
+                            st.session_state.parsed_synced_flag = False # Force re-sync/render on next CV Management tab load
                             
                             clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
+                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**. Please check **CV Management** tab for data.")
                         else:
                             # This block is now unlikely to be hit due to the fixed stub
                             st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
@@ -1353,15 +1378,12 @@ def candidate_dashboard():
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             
-                            # *** CRITICAL FIX: Ensure form data is updated after parsing for immediate display ***
+                            # CRITICAL FIX: Ensure full sync and set flag
                             st.session_state.cv_form_data = st.session_state.parsed.copy() 
-                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('experience', [])
-                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('certifications', [])
-                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('education', [])
+                            st.session_state.parsed_synced_flag = False # Force re-sync/render on next CV Management tab load
                             
                             clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
+                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**. Please check **CV Management** tab for data.")
                         else:
                             st.error(f"Parsing failed: {result['error']}")
                             st.session_state.parsed = {"error": result['error'], "name": result['name']}
