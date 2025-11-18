@@ -118,8 +118,9 @@ class MockGroqClient:
                     edu_p = 70 + (score * 1)
                     
                     # NOTE: This mock output uses the strict format expected by the regex parser below.
+                    # It now uses the more robust 'Score: [N]/10' format
                     mock_fit_output = f"""
-                    Overall Fit Score: [{score}]/10
+                    Overall Fit Score: {score}/10
                     
                     --- Section Match Analysis ---
                     Skills Match: {skills_p}%
@@ -996,12 +997,13 @@ def jd_batch_match_tab():
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
                         # --- START FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
-                        # Overall Score: Matches one or two digits optionally surrounded by brackets, followed by /10
-                        # This expression handles "[8]/10", "8/10", or " [8] / 10" variations from the LLM.
-                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?(\d{1,2})\]?\s*/10', fit_output, re.IGNORECASE)
+                        # Overall Score: Tries to find 'Overall Fit Score: [N]/10', 'Score: N/10', or just 'N' near the score prompt.
+                        # Matches 'Overall Fit Score:', 'Score:', or similar, followed by optional brackets, digits, and optional '/10'.
+                        overall_score_match = re.search(r'(?:Overall\s*Fit\s*Score|Score):\s*\[?(\d{1,2})\]?(?:\s*/10)?', fit_output, re.IGNORECASE)
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         
                         # Section Percentages: Look for the section name followed by one or two digits and a % sign.
+                        # This expression is already robust: [XX]%, XX%
                         skills_match = re.search(r'Skills\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
                         experience_match = re.search(r'Experience\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
                         education_match = re.search(r'Education\s*Match:\s*\[?(\d{1,2})\]?%', fit_output, re.IGNORECASE)
