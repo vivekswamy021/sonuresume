@@ -1056,7 +1056,7 @@ def jd_management_tab_candidate():
         ---
         """
 
-    elif method == "LinkedIn URL":
+    if method == "LinkedIn URL": # This block was the one with the reported indentation error
         with st.form("jd_url_form_candidate", clear_on_submit=True):
             url_list = st.text_area("Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate")
             if st.form_submit_button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
@@ -2140,6 +2140,7 @@ def candidate_dashboard():
     if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} 
 
     # --- Main Content with Tabs (Rearranged) ---
+    # Tab order: Resume Parsing, Parsed Data View, JD Management, Batch JD Match, Filter JD, Chatbot, Generate Cover Letter, Interview Preparation
     tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot, tab_cover_letter, tab_interview_prep = st.tabs(
         ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot", "✉️ Generate Cover Letter", "🎤 Interview Preparation"]
     )
