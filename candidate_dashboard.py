@@ -2386,13 +2386,11 @@ def chatbot_tab_content():
 # --------------------------------------------------------------------------------------
 # NEW TAB: CV MANAGEMENT (Form-Based Resume Generation)
 # --------------------------------------------------------------------------------------
-
 def cv_management_tab():
     """
     Tab for generating a CV using a structured form, replacing the need for file parsing.
     """
-    st.header("📝 CV Management: Generate Form-Based CV")
-    st.markdown("Manually enter your details to generate a structured CV/Resume for analysis.")
+    import streamlit as st # Ensure streamlit is imported if this is a standalone function
 
     if 'generated_cv_data' not in st.session_state:
         st.session_state.generated_cv_data = {}
