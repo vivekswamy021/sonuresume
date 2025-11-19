@@ -2699,10 +2699,8 @@ def candidate_dashboard():
     with tab_gap_analysis:
         gap_analysis_tab()
 
-
 # -------------------------
 # MAIN APP EXECUTION
 # -------------------------
-
 if __name__ == '__main__':
     candidate_dashboard()
