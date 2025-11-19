@@ -1168,12 +1168,10 @@ def jd_management_tab_candidate():
         ---
         """
 
-# The 'elif' statement must be aligned with the conditional block it belongs to.
-# Based on the structure, it appears it should be aligned with the outer block, 
-# likely the same level as the conditional block that contains the """ string.
-
-# --- CHANGE IS HERE ---
-    elif method == "LinkedIn URL":  # <-- This line must be aligned correctly
+""" # This is the closing of the multiline string above
+    
+    # This 'elif' must align with the outer conditional statement that controls the input method
+    elif method == "LinkedIn URL":
         with st.form("jd_url_form_candidate", clear_on_submit=True):
             url_list = st.text_area("Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate")
             if st.form_submit_button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
