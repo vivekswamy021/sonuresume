@@ -1117,11 +1117,8 @@ def resume_parsing_tab():
 # --- CV Management Tab Function (NEW) ---
 
 # --- CV Management Tab Function (NEW) ---
-
-# --- CV Management Tab Function (NEW) ---
-
 def cv_management_tab():
-    """Tab to allow form-based CV data entry."""
+    """Tab to allow form-based CV data entry with multi-format preview/download."""
     st.header("📝 CV Management & Form Generation")
     st.markdown("Generate a resume text structure by filling out the sections below. This text can then be parsed in the 'Resume Parsing' tab.")
     
@@ -1132,7 +1129,6 @@ def cv_management_tab():
     st.subheader("1. Personal Information")
     col_name, col_email, col_phone = st.columns(3)
     with col_name:
-        # The value=... key=... style ensures this field is always correctly bound.
         st.session_state.cv_data['personal_info']['name'] = st.text_input(
             "Full Name", 
             value=st.session_state.cv_data['personal_info']['name'], 
@@ -1154,7 +1150,6 @@ def cv_management_tab():
     st.markdown("---")
 
     # --- 2. Education ---
-    # ... (Keep existing Education form and display logic)
     st.subheader("2. Education")
     with st.form("education_form", clear_on_submit=True):
         col_deg, col_uni, col_fy, col_ty = st.columns([2, 2, 1, 1])
@@ -1173,7 +1168,6 @@ def cv_management_tab():
     st.markdown("---")
 
     # --- 3. Experience ---
-    # ... (Keep existing Experience form and display logic)
     st.subheader("3. Professional Experience")
     with st.form("experience_form", clear_on_submit=True):
         col_comp, col_role, col_ctc = st.columns([2, 2, 1])
@@ -1196,7 +1190,6 @@ def cv_management_tab():
     st.markdown("---")
 
     # --- 4. Projects ---
-    # ... (Keep existing Projects form and display logic)
     st.subheader("4. Projects")
     with st.form("projects_form", clear_on_submit=True):
         col_name, col_link = st.columns(2)
@@ -1216,7 +1209,6 @@ def cv_management_tab():
     st.markdown("---")
 
     # --- 5. Certifications ---
-    # ... (Keep existing Certifications form and display logic)
     st.subheader("5. Certifications")
     with st.form("cert_form", clear_on_submit=True):
         col_title, col_by = st.columns(2)
@@ -1237,7 +1229,6 @@ def cv_management_tab():
 
     # --- 6. Strengths ---
     st.subheader("6. Strengths")
-    # Bind text area directly to the 'strengths_raw' session state variable (FIXED key access)
     st.session_state.cv_data['strengths_raw'] = st.text_area(
         "Enter your key strengths (one per line)",
         value=st.session_state.cv_data['strengths_raw'],
@@ -1249,6 +1240,7 @@ def cv_management_tab():
     # --- 7. Generate and Preview Text ---
     
     def generate_cv_text():
+        """Generates the flat Markdown-like text structure for parsing."""
         data = st.session_state.cv_data
         text = f"Candidate Resume Data\n\n"
         
@@ -1276,7 +1268,7 @@ def cv_management_tab():
         # Strengths
         strengths_raw_data = data.get('strengths_raw', '')
         if strengths_raw_data:
-            strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
+            strengths_list = [f"- {s.strip()}" for s in strengths_raw_data.split('\n') if s.strip()]
             if strengths_list:
                 text += "--- Strengths ---\n"
                 text += "\n".join(strengths_list) + "\n\n"
@@ -1287,15 +1279,53 @@ def cv_management_tab():
         st.session_state.form_cv_text = generate_cv_text()
         st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
-    st.markdown("##### Current Generated Text Preview")
+    st.markdown("##### Current Generated Data Preview")
+    
     if st.session_state.form_cv_text:
-        st.text_area(
-            "Generated CV Text",
-            value=st.session_state.form_cv_text,
-            height=300,
-            disabled=True,
-            key='cv_text_preview'
-        )
+        
+        data = st.session_state.cv_data
+        json_data_str = create_json_data(data)
+        html_data_str = create_html_data(data)
+        
+        tab_md, tab_json, tab_html = st.tabs(["📄 Markdown View", "🧩 JSON View", "🌐 HTML/PDF Preview"])
+        
+        with tab_md:
+            st.markdown("### Markdown Text")
+            st.code(st.session_state.form_cv_text, language='markdown')
+            st.download_button(
+                label="⬇️ Download Markdown (.txt)",
+                data=st.session_state.form_cv_text,
+                file_name=f"{data['personal_info']['name'] or 'cv'}_data.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+            
+        with tab_json:
+            st.markdown("### JSON Structure (Raw Data)")
+            st.json(json_data_str)
+            st.download_button(
+                label="⬇️ Download JSON (.json)",
+                data=json_data_str,
+                file_name=f"{data['personal_info']['name'] or 'cv'}_data.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+        with tab_html:
+            st.markdown("### HTML Document Preview")
+            st.info("The HTML content below simulates a formatted CV document. Download the file and open it in a browser to see the full document design. (PDF conversion requires external libraries not available here, but HTML is the closest alternative).")
+            
+            # Display raw HTML for verification
+            st.code(html_data_str, language='html', height=300)
+            
+            st.download_button(
+                label="⬇️ Download HTML Document (.html)",
+                data=html_data_str,
+                file_name=f"{data['personal_info']['name'] or 'cv'}_document.html",
+                mime="text/html",
+                use_container_width=True
+            )
+            
     else:
         st.info("No CV text generated yet. Fill out the forms and click the generate button.")
 
@@ -1309,6 +1339,7 @@ def cv_management_tab():
             'strengths_raw': '' 
         }
         st.session_state.form_cv_text = ""
+        st.success("All CV form data cleared.")
         st.rerun()
 # --- JD Management Tab Function ---
         
