@@ -1,6 +1,6 @@
 # app.py
 
-import streamlit as st
+mport streamlit as st
 from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
 from hiring_dashboard import hiring_dashboard
@@ -63,39 +63,89 @@ def initialize_session_state():
     if 'hiring_jds' not in st.session_state: st.session_state.hiring_jds = []
     
 def login_page():
-    """Handles the user login and redirects to the appropriate dashboard."""
-    st.title("Welcome to PragyanAI - Login")
+    """Handles the user login and redirects to the appropriate dashboard based on the selected role."""
     
-    st.header("Login")
-    st.info("Use **admin**, **candidate**, or **hiring** as username to test.")
+    # --- Custom Header (Mimicking the image's branding) ---
+    st.markdown(
+        """
+        <div style="display: flex; align-items: center; margin-bottom: 30px;">
+            <span style="font-size: 32px; margin-right: 10px;">🌐</span> 
+            <h1 style="font-size: 32px; margin: 0; font-weight: 600;">PragyanAI Job Portal <span style="font-size: 20px; color: #4CAF50;">🔗</span></h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.subheader("Login")
     
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password (Any value)", type="password")
-        submitted = st.form_submit_button("Login")
+    # Use columns to create a centered, narrower login form area
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.caption("Use any email/password, but select the role: **Candidate**, **Admin**, or **Hiring Manager** to test the dashboards.")
         
-        if submitted:
-            user = username.lower()
-            if user == "candidate":
-                st.session_state.logged_in = True
-                st.session_state.user_type = "candidate"
-                go_to("candidate_dashboard")
-                st.success("Logged in as Candidate!")
-                st.rerun()
-            elif user == "admin":
-                st.session_state.logged_in = True
-                st.session_state.user_type = "admin"
-                go_to("admin_dashboard")
-                st.success("Logged in as Admin!")
-                st.rerun()
-            elif user == "hiring":
-                st.session_state.logged_in = True
-                st.session_state.user_type = "hiring"
-                go_to("hiring_dashboard")
-                st.success("Logged in as Hiring Manager!")
-                st.rerun()
-            else:
-                st.error("Invalid username. Please use 'candidate', 'admin', or 'hiring'.")
+        with st.form("login_form", clear_on_submit=True):
+            
+            # 1. Role Selection
+            st.markdown("Select Your Role")
+            role = st.selectbox(
+                "Select Role",
+                ["Select Role", "Candidate", "Admin", "Hiring Manager"],
+                label_visibility="collapsed",
+                index=0
+            )
+
+            # 2. Email Input
+            st.markdown("Email")
+            email = st.text_input("Email", label_visibility="collapsed", placeholder="Enter your email...")
+
+            # 3. Password Input
+            st.markdown("Password")
+            password = st.text_input("Password", type="password", label_visibility="collapsed", placeholder="Enter your password...")
+            
+            # Login Button
+            submitted = st.form_submit_button("Login", use_container_width=True)
+
+            if submitted:
+                if role == "Select Role":
+                    st.error("Please select your role.")
+                elif not email or not password:
+                    st.error("Please enter both email and password.")
+                else:
+                    # Map the selected role to the session state type used in the original app
+                    user_role = ""
+                    if role == "Candidate":
+                        user_role = "candidate"
+                    elif role == "Admin":
+                        user_role = "admin"
+                    elif role == "Hiring Manager":
+                        user_role = "hiring" # Matches the original app's internal 'hiring' type
+
+                    if user_role:
+                        st.session_state.logged_in = True
+                        st.session_state.user_type = user_role
+                        st.success(f"Logged in as {role}!")
+                        go_to(f"{user_role}_dashboard")
+                        st.rerun()
+                    else:
+                        st.error("Invalid role selected.")
+
+
+        # 4. Sign-up Link (Styled as a small button/link below the form)
+        st.markdown(
+            """
+            <div style="margin-top: 20px;">
+                <button 
+                    style="background: none; border: 1px solid #ccc; padding: 8px 15px; border-radius: 5px; cursor: pointer; color: #333; font-size: small;"
+                    onclick="alert('This is a demo, sign-up functionality is not implemented.');"
+                >
+                    Don't have an account? Sign up here
+                </button>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 # -------------------------
 # MAIN EXECUTION BLOCK 
