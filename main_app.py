@@ -1,6 +1,6 @@
 # app.py
 
-mport streamlit as st
+import streamlit as st
 from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
 from hiring_dashboard import hiring_dashboard
