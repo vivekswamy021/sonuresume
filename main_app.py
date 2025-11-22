@@ -4,6 +4,8 @@ from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
 from hiring_dashboard import hiring_dashboard
 
+image_url = "https://raw.githubusercontent.com/<username>/<repo>/main/logo.png"
+st.image(image_url, caption="My Image from GitHub") 
 # --- Utility Functions for Navigation and State Management ---
 
 def go_to(page_name):
