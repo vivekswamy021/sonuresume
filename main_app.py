@@ -70,7 +70,7 @@ def login_page():
     st.image("https://raw.githubusercontent.com/<username>/<repo>/main/images/logo.png", width=120)
 
     # --- Custom Header (Mimicking the image's branding) ---
-   st.markdown(
+    st.markdown(
         """
         <div style="display: flex; align-items: center; margin-bottom: 30px;">
             <span style="font-size: 32px; margin-right: 10px;">🌐</span> 
@@ -81,7 +81,7 @@ def login_page():
         """,
         unsafe_allow_html=True
     )
-   st.subheader("Login")
+    st.subheader("Login")
     # Use columns to create a centered, narrower login form area
     col1, col2, col3 = st.columns([1, 2, 1])
     
