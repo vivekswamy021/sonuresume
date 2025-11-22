@@ -65,10 +65,7 @@ def initialize_session_state():
         
 def login_page():
     """Handles the user login and redirects to the appropriate dashboard based on the selected role."""
-
-    # ---- Add image here ----
-    st.image("https://raw.githubusercontent.com/<username>/<repo>/main/images/logo.png", width=120)
-
+    
     # --- Custom Header (Mimicking the image's branding) ---
     st.markdown(
         """
