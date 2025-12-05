@@ -15,7 +15,7 @@ LOGO_URL = "https://raw.githubusercontent.com/vivekswamy021/Pragyan_AI_resume/ma
 # 🔥 LOGO FUNCTION (used across all pages)
 # --------------------------------------------------
 def show_logo(width=510):
-    st.image(LOGO_URL, width=width)
+    st.image(LOGO_URL, width=width)
 
 
 # ------------------------------
@@ -210,4 +210,4 @@ if __name__ == '__main__':
         if current_page == "signup":
             signup_page()
         else:
-            login_page() i have admin , candidate dashboards in github and i have app .py file i want to connect to mongodb with mongodb string or uri  don't use canvas
+            login_page() 
