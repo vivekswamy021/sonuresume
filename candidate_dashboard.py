@@ -2288,13 +2288,9 @@ def interview_preparation_tab():
     
     is_jd_loaded = bool(st.session_state.get('candidate_jd_list'))
 
-    # Check if we are running in Mock Mode (Assuming client and GROQ_API_KEY are defined globally)
-    # is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY 
+    # Check if we are running in Mock Mode
+    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
     
-    # Placeholder definitions for missing globals (for code completeness only)
-    GROQ_API_KEY = "dummy_key"
-    is_mock_mode = False 
-
     if not GROQ_API_KEY and not is_mock_mode:
         st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
         return
@@ -2309,63 +2305,10 @@ def interview_preparation_tab():
     if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = [] 
     if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = "" 
     
-    # Shared options for category and difficulty
-    QUESTION_CATEGORIES = ["Technical", "Experience-Based", "Situational/Behavioral", "HR/General"]
-    DIFFICULTY_LEVELS = ["Basic", "Intermediate", "Advanced"]
-
-    def clear_interview_state(mode):
-        """Helper to clear QA and evaluation state when inputs change."""
-        if mode == 'resume':
-            st.session_state.iq_output_resume = ""
-            st.session_state.interview_qa_resume = []
-            st.session_state.evaluation_report_resume = ""
-        elif mode == 'jd':
-            st.session_state.iq_output_jd = ""
-            st.session_state.interview_qa_jd = []
-            st.session_state.evaluation_report_jd = ""
-            
-    # Placeholder for functions that interact with the LLM and data processing
-    # NOTE: These functions must be defined elsewhere in your complete application code.
-    # def generate_interview_questions(source_data, source_type, identifier, category, difficulty):
-    #     # LLM call logic here
-    #     return "Mock question response."
-    # def parse_questions_from_raw(raw_response):
-    #     return ["Q1: Tell me about your background.", "Q2: What is your favorite technology?"]
-    # def display_evaluation_form(mode, qa_list, context_data):
-    #     st.info("Evaluation form displayed here.")
+    # Initialize new question parameters
+    if 'iq_q_types' not in st.session_state: st.session_state.iq_q_types = ['HR', 'Technical']
+    if 'iq_difficulty' not in st.session_state: st.session_state.iq_difficulty = ['Intermediate']
     
-    # Import necessary modules (assuming they are available in the scope where this function is called)
-    import traceback 
-    
-    # Mock implementations for missing functions to prevent errors in this snippet
-    def generate_interview_questions(source_data, source_type, identifier, category, difficulty):
-        if category == "Technical":
-            return f"Q1: Describe the process of {identifier}. Q2: How would you debug a common issue in {difficulty} level {category} skill?"
-        return f"Q1: Give an example of a {category} challenge at a {difficulty} level. Q2: What is your salary expectation?"
-
-    def parse_questions_from_raw(raw_response):
-        return [q.strip() for q in raw_response.split('Q') if q.strip()]
-
-    def display_evaluation_form(mode, qa_list, context_data):
-        if qa_list:
-            st.subheader(f"2. Answer & Evaluate ({mode.upper()} Mode)")
-            st.info(f"Prepare to answer {len(qa_list)} questions.")
-            
-            for i, question in enumerate(qa_list):
-                 with st.expander(f"**Question {i+1}:** {question[:70]}..."):
-                     st.write(question)
-                     # Text area and evaluation button logic would go here
-                     st.text_area(f"Your Answer for Q{i+1}", key=f'answer_{mode}_{i}')
-                     # Assuming an evaluation button exists to submit answers to the LLM for feedback
-                     # st.button("Submit Answer", key=f'submit_{mode}_{i}')
-
-            st.divider()
-            # Final Evaluation Report Display
-            report_state = st.session_state.get(f'evaluation_report_{mode}')
-            if report_state:
-                st.subheader("3. Evaluation Report")
-                st.markdown(report_state)
-
     st.markdown("---")
 
     tab_resume, tab_jd = st.tabs(["👤 Resume Based Q&A", "💼 JD Based Q&A"])
@@ -2378,83 +2321,98 @@ def interview_preparation_tab():
             if st.session_state.get('parsed', {}).get('error'):
                  st.error(f"Parsing error: {st.session_state.parsed.get('error')}")
             
-            return
+            # Since return is outside the tab_resume block, use a container to visually exit the content flow
+            st.markdown("---")
+            continue_execution_resume = False # Added flag for cleaner flow
+        else:
+            continue_execution_resume = True
 
-        # Generate section options dynamically
-        parsed_keys = st.session_state.parsed.keys()
-        question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
-        # Only sections with valid content
-        question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_')) and str(st.session_state.parsed.get(o.lower().replace(' ', '_'))).strip()])
 
-        if not question_section_options:
-            st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
-            return
-            
-        st.subheader("1. Generate Interview Questions (Resume)")
-        
-        col_sec, col_cat, col_diff = st.columns(3)
-        
-        with col_sec:
-            section_choice = st.selectbox(
-                "Select Resume Section to Focus On", 
-                question_section_options, 
-                key='iq_section_resume_c',
-                on_change=lambda: clear_interview_state('resume')
-            )
-        
-        with col_cat:
-            category_choice = st.selectbox(
-                "Question Category",
-                QUESTION_CATEGORIES,
-                key='iq_category_resume_c',
-                on_change=lambda: clear_interview_state('resume')
-            )
+        if continue_execution_resume:
+            # Generate section options dynamically
+            parsed_keys = st.session_state.parsed.keys()
+            question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
+            # Only sections with valid content
+            question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_')) and str(st.session_state.parsed.get(o.lower().replace(' ', '_'))).strip()])
 
-        with col_diff:
-            difficulty_choice = st.selectbox(
-                "Difficulty Level",
-                DIFFICULTY_LEVELS,
-                key='iq_difficulty_resume_c',
-                on_change=lambda: clear_interview_state('resume')
-            )
-
-        if st.button("Generate Resume Questions", key='iq_btn_resume_c', use_container_width=True):
-            with st.spinner("Generating questions based on resume section..."):
-                try:
-                    # Clear current mode state first
-                    clear_interview_state('resume')
-
-                    # Call the unified generation function (Mode: resume)
-                    raw_questions_response = generate_interview_questions(
-                        source_data=st.session_state.parsed, 
-                        source_type='resume', 
-                        identifier=section_choice,
-                        category=category_choice, # NEW PARAMETER
-                        difficulty=difficulty_choice # NEW PARAMETER
+            if not question_section_options:
+                st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
+                continue_execution_resume = False
+                
+            if continue_execution_resume:
+                st.subheader("1. Generate Interview Questions (Resume)")
+                
+                # --- NEW INPUTS ---
+                col_q_type, col_q_level = st.columns(2)
+                
+                with col_q_type:
+                    selected_q_types = st.multiselect(
+                        "Select Question Type(s)",
+                        options=['HR-related', 'Technical', 'Situational', 'Experience-based'],
+                        default=st.session_state.iq_q_types,
+                        key='iq_q_types_resume_c',
+                        on_change=lambda: clear_interview_state('resume')
                     )
-                    
-                    if raw_questions_response.startswith("Error:"):
-                        st.error(raw_questions_response)
-                        st.session_state.iq_output_resume = raw_questions_response
+                
+                with col_q_level:
+                    selected_difficulty = st.multiselect(
+                        "Select Difficulty Level(s)",
+                        options=['Basic', 'Intermediate', 'Advanced'],
+                        default=st.session_state.iq_difficulty,
+                        key='iq_difficulty_resume_c',
+                        on_change=lambda: clear_interview_state('resume')
+                    )
+                
+                section_choice = st.selectbox(
+                    "Select Resume Section to Focus On", 
+                    question_section_options, 
+                    key='iq_section_resume_c',
+                    on_change=lambda: clear_interview_state('resume')
+                )
+                
+                if st.button("Generate Resume Questions", key='iq_btn_resume_c', use_container_width=True):
+                    if not selected_q_types or not selected_difficulty:
+                        st.error("Please select at least one Question Type and one Difficulty Level.")
                         return
+                    
+                    with st.spinner("Generating questions based on resume section..."):
+                        try:
+                            # Clear current mode state first
+                            clear_interview_state('resume')
 
-                    st.session_state.iq_output_resume = raw_questions_response
-                    q_list = parse_questions_from_raw(raw_questions_response)
-                        
-                    st.session_state.interview_qa_resume = q_list
-                    
-                    if q_list:
-                        st.success(f"Generated {len(q_list)} {difficulty_choice} level {category_choice} questions based on your **{section_choice}** section.")
-                    else:
-                        st.warning(f"Could not parse any questions from the LLM response.")
-                    
-                except Exception as e:
-                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
-                    st.session_state.iq_output_resume = "Error generating questions."
-                    st.session_state.interview_qa_resume = []
-        
-        # Display/Evaluation Logic for Resume Mode
-        display_evaluation_form('resume', st.session_state.interview_qa_resume, st.session_state.full_text)
+                            # Call the unified generation function (Mode: resume)
+                            # Pass new parameters: selected_q_types and selected_difficulty
+                            raw_questions_response = generate_interview_questions(
+                                source_data=st.session_state.parsed, 
+                                source_type='resume', 
+                                identifier=section_choice,
+                                q_types=selected_q_types,
+                                difficulty=selected_difficulty
+                            )
+                            
+                            if raw_questions_response.startswith("Error:"):
+                                 st.error(raw_questions_response)
+                                 st.session_state.iq_output_resume = raw_questions_response
+                                 return
+
+                            st.session_state.iq_output_resume = raw_questions_response
+                            q_list = parse_questions_from_raw(raw_questions_response)
+                                
+                            st.session_state.interview_qa_resume = q_list
+                            
+                            if q_list:
+                                st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                            else:
+                                st.warning(f"Could not parse any questions from the LLM response.")
+                            
+                        except Exception as e:
+                            import traceback
+                            st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
+                            st.session_state.iq_output_resume = "Error generating questions."
+                            st.session_state.interview_qa_resume = []
+                
+                # Display/Evaluation Logic for Resume Mode
+                display_evaluation_form('resume', st.session_state.interview_qa_resume, st.session_state.full_text)
 
 
     with tab_jd:
@@ -2462,15 +2420,36 @@ def interview_preparation_tab():
 
         if not is_jd_loaded:
             st.warning("Please load Job Descriptions in the 'JD Management' tab first.")
-            return
+            st.markdown("---")
+            continue_execution_jd = False
+        else:
+            continue_execution_jd = True
             
-        st.subheader("1. Generate Interview Questions (JD)")
-        
-        jd_names = [jd.get('name') for jd in st.session_state.candidate_jd_list if jd.get('name')]
-        
-        col_jd, col_cat, col_diff = st.columns(3)
-
-        with col_jd:
+        if continue_execution_jd:
+            st.subheader("1. Generate Interview Questions (JD)")
+            
+            # --- NEW INPUTS ---
+            col_q_type, col_q_level = st.columns(2)
+            
+            with col_q_type:
+                selected_q_types = st.multiselect(
+                    "Select Question Type(s)",
+                    options=['HR-related', 'Technical', 'Situational', 'Experience-based'],
+                    default=st.session_state.iq_q_types,
+                    key='iq_q_types_jd_c',
+                    on_change=lambda: clear_interview_state('jd')
+                )
+            
+            with col_q_level:
+                selected_difficulty = st.multiselect(
+                    "Select Difficulty Level(s)",
+                    options=['Basic', 'Intermediate', 'Advanced'],
+                    default=st.session_state.iq_difficulty,
+                    key='iq_difficulty_jd_c',
+                    on_change=lambda: clear_interview_state('jd')
+                )
+                
+            jd_names = [jd.get('name') for jd in st.session_state.candidate_jd_list if jd.get('name')]
             selected_jd_name = st.selectbox(
                 "Select Job Description",
                 options=jd_names,
@@ -2478,66 +2457,55 @@ def interview_preparation_tab():
                 on_change=lambda: clear_interview_state('jd')
             )
 
-        selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd.get('name') == selected_jd_name), None)
-        
-        with col_cat:
-            category_choice = st.selectbox(
-                "Question Category",
-                QUESTION_CATEGORIES,
-                key='iq_category_jd_c',
-                on_change=lambda: clear_interview_state('jd')
-            )
+            selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd.get('name') == selected_jd_name), None)
+            
+            if st.button("Generate JD Questions", key='iq_btn_jd_c', use_container_width=True):
+                if not selected_jd:
+                    st.error("Please select a Job Description.")
+                    return
+                if not selected_q_types or not selected_difficulty:
+                    st.error("Please select at least one Question Type and one Difficulty Level.")
+                    return
 
-        with col_diff:
-            difficulty_choice = st.selectbox(
-                "Difficulty Level",
-                DIFFICULTY_LEVELS,
-                key='iq_difficulty_jd_c',
-                on_change=lambda: clear_interview_state('jd')
-            )
-
-
-        if st.button("Generate JD Questions", key='iq_btn_jd_c', use_container_width=True):
-            if not selected_jd:
-                st.error("Please select a Job Description.")
-                return
-
-            with st.spinner(f"Generating questions based on JD: {selected_jd_name}..."):
-                try:
-                    # Clear current mode state first
-                    clear_interview_state('jd')
-                    
-                    # Call the unified generation function (Mode: jd)
-                    raw_questions_response = generate_interview_questions(
-                        source_data=selected_jd.get('content', ''), # Pass the JD content as source data
-                        source_type='jd', 
-                        identifier=selected_jd_name, # Use JD name as identifier
-                        category=category_choice, # NEW PARAMETER
-                        difficulty=difficulty_choice # NEW PARAMETER
-                    )
-                    
-                    if raw_questions_response.startswith("Error:"):
-                        st.error(raw_questions_response)
-                        st.session_state.iq_output_jd = raw_questions_response
-                        return
-
-                    st.session_state.iq_output_jd = raw_questions_response
-                    q_list = parse_questions_from_raw(raw_questions_response)
+                with st.spinner(f"Generating questions based on JD: {selected_jd_name}..."):
+                    try:
+                        # Clear current mode state first
+                        clear_interview_state('jd')
                         
-                    st.session_state.interview_qa_jd = q_list
-                    
-                    if q_list:
-                        st.success(f"Generated {len(q_list)} {difficulty_choice} level {category_choice} questions based on **{selected_jd_name}**.")
-                    else:
-                        st.warning(f"Could not parse any questions from the LLM response.")
-                    
-                except Exception as e:
-                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
-                    st.session_state.iq_output_jd = "Error generating questions."
-                    st.session_state.interview_qa_jd = []
+                        # Call the unified generation function (Mode: jd)
+                        # Pass new parameters: selected_q_types and selected_difficulty
+                        raw_questions_response = generate_interview_questions(
+                            source_data=selected_jd.get('name', 'N/A'), 
+                            source_type='jd', 
+                            identifier=selected_jd.get('content', ''),
+                            q_types=selected_q_types,
+                            difficulty=selected_difficulty
+                        )
+                        
+                        if raw_questions_response.startswith("Error:"):
+                             st.error(raw_questions_response)
+                             st.session_state.iq_output_jd = raw_questions_response
+                             return
 
-        # Display/Evaluation Logic for JD Mode
-        display_evaluation_form('jd', st.session_state.interview_qa_jd, selected_jd.get('content', '') if selected_jd else "")
+                        st.session_state.iq_output_jd = raw_questions_response
+                        q_list = parse_questions_from_raw(raw_questions_response)
+                            
+                        st.session_state.interview_qa_jd = q_list
+                        
+                        if q_list:
+                            st.success(f"Generated {len(q_list)} questions based on **{selected_jd_name}**.")
+                        else:
+                            st.warning(f"Could not parse any questions from the LLM response.")
+                        
+                    except Exception as e:
+                        import traceback
+                        st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
+                        st.session_state.iq_output_jd = "Error generating questions."
+                        st.session_state.interview_qa_jd = []
+
+            # Display/Evaluation Logic for JD Mode
+            display_evaluation_form('jd', st.session_state.interview_qa_jd, selected_jd.get('content', '') if selected_jd else "")
+
 
 
 # --------------------------------------------------------------------------------------
