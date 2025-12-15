@@ -92,8 +92,16 @@ def render_profile_sidebar():
     with st.sidebar:
         # Dynamic Header with User Name
         st.header(f"👤 {st.session_state.user_name}")
-        # Display Role and Email
-        st.caption(f"Role: {st.session_state.user_type.capitalize()} | Email: {st.session_state.user_email}")
+        
+        # 🔥 HIGHLIGHTED ROLE AND EMAIL
+        st.markdown(
+            f"**Role:** {st.session_state.user_type.capitalize()}",
+            unsafe_allow_html=False
+        )
+        st.markdown(
+            f"**Email:** {st.session_state.user_email}",
+            unsafe_allow_html=False
+        )
         
         st.divider()
 
