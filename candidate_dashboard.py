@@ -290,7 +290,6 @@ except (ImportError, ValueError, NameError) as e:
 # --- END API SETUP ---
 
 # --- Utility Functions ---
-
 def clear_interview_state(mode):
 
     """Clears all session state variables related to interview preparation for a specific mode."""
@@ -306,14 +305,13 @@ def clear_interview_state(mode):
     elif mode == 'jd':
 
         if 'iq_output_jd' in st.session_state: del st.session_state['iq_output_jd']
-
         if 'interview_qa_jd' in st.session_state: del st.session_state['interview_qa_jd']
-
         if 'evaluation_report_jd' in st.session_state: del st.session_state['evaluation_report_jd']
-
+            
     # Also clear the gap analysis plan when interview state is cleared (as it's derived from the match)
 
     if 'gap_analysis_plan' in st.session_state: del st.session_state['gap_analysis_plan']
+        
 def get_file_type(file_name):
     """Identifies the file type based on its extension, handling common text formats."""
     ext = os.path.splitext(file_name)[1].lower().strip('.')
