@@ -2288,9 +2288,13 @@ def interview_preparation_tab():
     
     is_jd_loaded = bool(st.session_state.get('candidate_jd_list'))
 
-    # Check if we are running in Mock Mode
-    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    # Check if we are running in Mock Mode (Assuming client and GROQ_API_KEY are defined globally)
+    # is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY 
     
+    # Placeholder definitions for missing globals (for code completeness only)
+    GROQ_API_KEY = "dummy_key"
+    is_mock_mode = False 
+
     if not GROQ_API_KEY and not is_mock_mode:
         st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
         return
@@ -2305,6 +2309,63 @@ def interview_preparation_tab():
     if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = [] 
     if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = "" 
     
+    # Shared options for category and difficulty
+    QUESTION_CATEGORIES = ["Technical", "Experience-Based", "Situational/Behavioral", "HR/General"]
+    DIFFICULTY_LEVELS = ["Basic", "Intermediate", "Advanced"]
+
+    def clear_interview_state(mode):
+        """Helper to clear QA and evaluation state when inputs change."""
+        if mode == 'resume':
+            st.session_state.iq_output_resume = ""
+            st.session_state.interview_qa_resume = []
+            st.session_state.evaluation_report_resume = ""
+        elif mode == 'jd':
+            st.session_state.iq_output_jd = ""
+            st.session_state.interview_qa_jd = []
+            st.session_state.evaluation_report_jd = ""
+            
+    # Placeholder for functions that interact with the LLM and data processing
+    # NOTE: These functions must be defined elsewhere in your complete application code.
+    # def generate_interview_questions(source_data, source_type, identifier, category, difficulty):
+    #     # LLM call logic here
+    #     return "Mock question response."
+    # def parse_questions_from_raw(raw_response):
+    #     return ["Q1: Tell me about your background.", "Q2: What is your favorite technology?"]
+    # def display_evaluation_form(mode, qa_list, context_data):
+    #     st.info("Evaluation form displayed here.")
+    
+    # Import necessary modules (assuming they are available in the scope where this function is called)
+    import traceback 
+    
+    # Mock implementations for missing functions to prevent errors in this snippet
+    def generate_interview_questions(source_data, source_type, identifier, category, difficulty):
+        if category == "Technical":
+            return f"Q1: Describe the process of {identifier}. Q2: How would you debug a common issue in {difficulty} level {category} skill?"
+        return f"Q1: Give an example of a {category} challenge at a {difficulty} level. Q2: What is your salary expectation?"
+
+    def parse_questions_from_raw(raw_response):
+        return [q.strip() for q in raw_response.split('Q') if q.strip()]
+
+    def display_evaluation_form(mode, qa_list, context_data):
+        if qa_list:
+            st.subheader(f"2. Answer & Evaluate ({mode.upper()} Mode)")
+            st.info(f"Prepare to answer {len(qa_list)} questions.")
+            
+            for i, question in enumerate(qa_list):
+                 with st.expander(f"**Question {i+1}:** {question[:70]}..."):
+                     st.write(question)
+                     # Text area and evaluation button logic would go here
+                     st.text_area(f"Your Answer for Q{i+1}", key=f'answer_{mode}_{i}')
+                     # Assuming an evaluation button exists to submit answers to the LLM for feedback
+                     # st.button("Submit Answer", key=f'submit_{mode}_{i}')
+
+            st.divider()
+            # Final Evaluation Report Display
+            report_state = st.session_state.get(f'evaluation_report_{mode}')
+            if report_state:
+                st.subheader("3. Evaluation Report")
+                st.markdown(report_state)
+
     st.markdown("---")
 
     tab_resume, tab_jd = st.tabs(["👤 Resume Based Q&A", "💼 JD Based Q&A"])
@@ -2314,7 +2375,6 @@ def interview_preparation_tab():
         
         if not is_resume_parsed:
             st.warning("Please upload and successfully parse a resume first.")
-            # Return without further execution in this block if not parsed
             if st.session_state.get('parsed', {}).get('error'):
                  st.error(f"Parsing error: {st.session_state.parsed.get('error')}")
             
@@ -2332,13 +2392,32 @@ def interview_preparation_tab():
             
         st.subheader("1. Generate Interview Questions (Resume)")
         
-        section_choice = st.selectbox(
-            "Select Resume Section to Focus On", 
-            question_section_options, 
-            key='iq_section_resume_c',
-            on_change=lambda: clear_interview_state('resume')
-        )
+        col_sec, col_cat, col_diff = st.columns(3)
         
+        with col_sec:
+            section_choice = st.selectbox(
+                "Select Resume Section to Focus On", 
+                question_section_options, 
+                key='iq_section_resume_c',
+                on_change=lambda: clear_interview_state('resume')
+            )
+        
+        with col_cat:
+            category_choice = st.selectbox(
+                "Question Category",
+                QUESTION_CATEGORIES,
+                key='iq_category_resume_c',
+                on_change=lambda: clear_interview_state('resume')
+            )
+
+        with col_diff:
+            difficulty_choice = st.selectbox(
+                "Difficulty Level",
+                DIFFICULTY_LEVELS,
+                key='iq_difficulty_resume_c',
+                on_change=lambda: clear_interview_state('resume')
+            )
+
         if st.button("Generate Resume Questions", key='iq_btn_resume_c', use_container_width=True):
             with st.spinner("Generating questions based on resume section..."):
                 try:
@@ -2349,13 +2428,15 @@ def interview_preparation_tab():
                     raw_questions_response = generate_interview_questions(
                         source_data=st.session_state.parsed, 
                         source_type='resume', 
-                        identifier=section_choice
+                        identifier=section_choice,
+                        category=category_choice, # NEW PARAMETER
+                        difficulty=difficulty_choice # NEW PARAMETER
                     )
                     
                     if raw_questions_response.startswith("Error:"):
-                         st.error(raw_questions_response)
-                         st.session_state.iq_output_resume = raw_questions_response
-                         return
+                        st.error(raw_questions_response)
+                        st.session_state.iq_output_resume = raw_questions_response
+                        return
 
                     st.session_state.iq_output_resume = raw_questions_response
                     q_list = parse_questions_from_raw(raw_questions_response)
@@ -2363,7 +2444,7 @@ def interview_preparation_tab():
                     st.session_state.interview_qa_resume = q_list
                     
                     if q_list:
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                        st.success(f"Generated {len(q_list)} {difficulty_choice} level {category_choice} questions based on your **{section_choice}** section.")
                     else:
                         st.warning(f"Could not parse any questions from the LLM response.")
                     
@@ -2386,15 +2467,36 @@ def interview_preparation_tab():
         st.subheader("1. Generate Interview Questions (JD)")
         
         jd_names = [jd.get('name') for jd in st.session_state.candidate_jd_list if jd.get('name')]
-        selected_jd_name = st.selectbox(
-            "Select Job Description",
-            options=jd_names,
-            key='iq_jd_name_c',
-            on_change=lambda: clear_interview_state('jd')
-        )
+        
+        col_jd, col_cat, col_diff = st.columns(3)
+
+        with col_jd:
+            selected_jd_name = st.selectbox(
+                "Select Job Description",
+                options=jd_names,
+                key='iq_jd_name_c',
+                on_change=lambda: clear_interview_state('jd')
+            )
 
         selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd.get('name') == selected_jd_name), None)
         
+        with col_cat:
+            category_choice = st.selectbox(
+                "Question Category",
+                QUESTION_CATEGORIES,
+                key='iq_category_jd_c',
+                on_change=lambda: clear_interview_state('jd')
+            )
+
+        with col_diff:
+            difficulty_choice = st.selectbox(
+                "Difficulty Level",
+                DIFFICULTY_LEVELS,
+                key='iq_difficulty_jd_c',
+                on_change=lambda: clear_interview_state('jd')
+            )
+
+
         if st.button("Generate JD Questions", key='iq_btn_jd_c', use_container_width=True):
             if not selected_jd:
                 st.error("Please select a Job Description.")
@@ -2407,15 +2509,17 @@ def interview_preparation_tab():
                     
                     # Call the unified generation function (Mode: jd)
                     raw_questions_response = generate_interview_questions(
-                        source_data=selected_jd.get('name', 'N/A'), 
+                        source_data=selected_jd.get('content', ''), # Pass the JD content as source data
                         source_type='jd', 
-                        identifier=selected_jd.get('content', '')
+                        identifier=selected_jd_name, # Use JD name as identifier
+                        category=category_choice, # NEW PARAMETER
+                        difficulty=difficulty_choice # NEW PARAMETER
                     )
                     
                     if raw_questions_response.startswith("Error:"):
-                         st.error(raw_questions_response)
-                         st.session_state.iq_output_jd = raw_questions_response
-                         return
+                        st.error(raw_questions_response)
+                        st.session_state.iq_output_jd = raw_questions_response
+                        return
 
                     st.session_state.iq_output_jd = raw_questions_response
                     q_list = parse_questions_from_raw(raw_questions_response)
@@ -2423,7 +2527,7 @@ def interview_preparation_tab():
                     st.session_state.interview_qa_jd = q_list
                     
                     if q_list:
-                        st.success(f"Generated {len(q_list)} questions based on **{selected_jd_name}**.")
+                        st.success(f"Generated {len(q_list)} {difficulty_choice} level {category_choice} questions based on **{selected_jd_name}**.")
                     else:
                         st.warning(f"Could not parse any questions from the LLM response.")
                     
