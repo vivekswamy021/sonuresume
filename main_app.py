@@ -31,7 +31,7 @@ def initialize_session_state():
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     if 'user_type' not in st.session_state: st.session_state.user_type = None
     if 'user_email' not in st.session_state: st.session_state.user_email = "" 
-    if 'user_name' not in st.session_state: st.session_state.user_name = "" # Store Name
+    if 'user_name' not in st.session_state: st.session_state.user_name = ""
 
     # --------------------------------------------------
     # 👤 USER PROFILE DATA
@@ -90,7 +90,7 @@ def initialize_session_state():
 # --------------------------------------------------
 def render_profile_sidebar():
     with st.sidebar:
-        # 🔥 Dynamic Header with User Name
+        # Dynamic Header with User Name
         st.header(f"👤 {st.session_state.user_name}")
         st.caption(f"Role: {st.session_state.user_type.capitalize()}")
         
@@ -157,7 +157,10 @@ def render_profile_sidebar():
         if st.button("Logout", type="primary"):
             st.session_state.logged_in = False
             st.session_state.user_type = None
-            st.session_state.user_name = "" # Clear name on logout
+            st.session_state.user_email = "" 
+            st.session_state.user_name = "" 
+            # 🔥 Clear the uploaded photo/profile picture
+            st.session_state.user_profile["profile_pic"] = None
             st.session_state.page = "login"
             st.rerun()
 
@@ -214,14 +217,13 @@ def login_page():
                         "Hiring Manager": "hiring"
                     }.get(role)
 
-                    # 🔥 Extract Name from Email (Simple Logic)
-                    # e.g. "vivek@gmail.com" -> "Vivek"
+                    # Extract Name from Email (Simple Logic)
                     extracted_name = email.split("@")[0].capitalize()
 
                     st.session_state.logged_in = True
                     st.session_state.user_type = user_role
                     st.session_state.user_email = email
-                    st.session_state.user_name = extracted_name # Set the name!
+                    st.session_state.user_name = extracted_name
                     
                     go_to(f"{user_role}_dashboard")
                     st.rerun()
@@ -292,7 +294,7 @@ if __name__ == '__main__':
 
     if st.session_state.logged_in:
         
-        # 🔥 RENDER SIDEBAR with Name
+        # RENDER SIDEBAR with Profile options
         render_profile_sidebar()
 
         if st.session_state.user_type == "admin":
