@@ -153,16 +153,9 @@ def render_profile_sidebar():
                 else:
                     st.warning("Please fill both fields.")
 
-        st.divider()
-        
-        if st.button("Logout", type="primary"):
-            st.session_state.logged_in = False
-            st.session_state.user_type = None
-            st.session_state.user_email = "" 
-            st.session_state.user_name = "" 
-            st.session_state.user_profile["profile_pic"] = None
-            st.session_state.page = "login"
-            st.rerun()
+        # --------------------------------------------------
+        # 🔥 LOGOUT BUTTON REMOVED HERE
+        # --------------------------------------------------
 
 
 # --------------------------------------------------
