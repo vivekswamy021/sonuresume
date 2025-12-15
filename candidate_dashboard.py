@@ -1116,192 +1116,254 @@ def resume_parsing_tab():
         
 # --- CV Management Tab Function (NEW) ---
 
+# --- CV Management Tab Function (NEW) ---
 def cv_management_tab():
-    """Tab to allow form-based CV data entry."""
+    """Tab to allow form-based CV data entry and multi-format preview/download."""
     st.header("📝 CV Management & Form Generation")
     st.markdown("Generate a resume text structure by filling out the sections below. This text can then be parsed in the 'Resume Parsing' tab.")
     
-    if 'cv_data' not in st.session_state:
-        st.session_state.cv_data = {
-            'personal_info': {'name': '', 'email': '', 'phone': ''},
-            'education': [],
-            'experience': [],
-            'projects': [],
-            'certifications': []
-        }
-    if 'form_cv_text' not in st.session_state:
-        st.session_state.form_cv_text = ""
-
     # --- 1. Personal Info ---
     st.subheader("1. Personal Information")
     col_name, col_email, col_phone = st.columns(3)
+    
+    # 1.1 Name
     with col_name:
         st.session_state.cv_data['personal_info']['name'] = st.text_input(
             "Full Name", 
-            value=st.session_state.cv_data['personal_info']['name'], 
+            value=st.session_state.cv_data['personal_info'].get('name', ''), 
             key='cv_name'
         )
+    # 1.2 Email
     with col_email:
         st.session_state.cv_data['personal_info']['email'] = st.text_input(
             "Email", 
-            value=st.session_state.cv_data['personal_info']['email'], 
+            value=st.session_state.cv_data['personal_info'].get('email', ''), 
             key='cv_email'
         )
+    # 1.3 Phone
     with col_phone:
         st.session_state.cv_data['personal_info']['phone'] = st.text_input(
             "Phone Number", 
-            value=st.session_state.cv_data['personal_info']['phone'], 
+            value=st.session_state.cv_data['personal_info'].get('phone', ''), 
             key='cv_phone'
         )
+        
+    # 1.4 Communication Address (New Field)
+    st.session_state.cv_data['personal_info']['address'] = st.text_input(
+        "Communication Address (Optional)",
+        value=st.session_state.cv_data['personal_info'].get('address', ''),
+        key='cv_address'
+    )
     
     st.markdown("---")
 
     # --- 2. Education ---
     st.subheader("2. Education")
     with st.form("education_form", clear_on_submit=True):
-        col_deg, col_uni, col_fy, col_ty = st.columns([2, 2, 1, 1])
-        with col_deg:
-            degree = st.text_input("Degree/Qualification", key='edu_degree')
-        with col_uni:
-            university = st.text_input("University/Institution", key='edu_uni')
-        with col_fy:
-            year_from = st.text_input("From Year", key='edu_fy')
-        with col_ty:
-            year_to = st.text_input("To Year", key='edu_ty')
-            
+        col_deg, col_uni, col_fy, col_ty, col_score = st.columns([2, 2, 1, 1, 1])
+        with col_deg: degree = st.text_input("Degree/Qualification", key='edu_degree')
+        with col_uni: university = st.text_input("University/Institution", key='edu_uni')
+        with col_fy: year_from = st.text_input("From Year", key='edu_fy')
+        with col_ty: year_to = st.text_input("To Year", key='edu_ty')
+        # New Field: Academic Scores
+        with col_score: score = st.text_input("Scores (GPA/%)", key='edu_score', help="e.g., 3.8/4.0 or 85%")
+        
         if st.form_submit_button("Add Education"):
             if degree and university:
-                entry = f"{degree}, {university} ({year_from}-{year_to})"
+                score_display = f", Score: {score}" if score else ""
+                entry = f"Degree: {degree}, Institution: {university} ({year_from}-{year_to}){score_display}"
                 st.session_state.cv_data['education'].append(entry)
                 st.success(f"Added: {entry}")
-            else:
-                st.error("Please enter Degree and University.")
+            else: st.error("Please enter Degree and University.")
+    if st.session_state.cv_data['education']:
+        st.dataframe(st.session_state.cv_data['education'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 3. Experience ---
     st.subheader("3. Professional Experience")
     with st.form("experience_form", clear_on_submit=True):
         col_comp, col_role, col_ctc = st.columns([2, 2, 1])
-        with col_comp:
-            company = st.text_input("Company Name", key='exp_company')
-        with col_role:
-            role = st.text_input("Role/Title", key='exp_role')
-        with col_ctc:
-            ctc = st.text_input("CTC (Annual)", key='exp_ctc')
-            
+        with col_comp: company = st.text_input("Company Name", key='exp_company')
+        with col_role: role = st.text_input("Role/Title", key='exp_role')
+        with col_ctc: ctc = st.text_input("CTC (Annual)", key='exp_ctc')
         col_fy, col_ty = st.columns(2)
-        with col_fy:
-            year_from = st.text_input("From Year/Date", key='exp_fy')
-        with col_ty:
-            year_to = st.text_input("To Year/Date (or Present)", key='exp_ty')
-            
-        description = st.text_area("Responsibilities/Achievements (Use bullet points)", key='exp_desc', height=100)
-            
+        with col_fy: year_from = st.text_input("From Year/Date", key='exp_fy')
+        with col_ty: year_to = st.text_input("To Year/Date (or Present)", key='exp_ty')
+        
+        # Separated Description Fields
+        responsibilities = st.text_area("Key Responsibilities (Use bullet points)", key='exp_resp', height=100)
+        achievements = st.text_area("Key Achievements/Metrics", key='exp_achiev', height=100)
+        
         if st.form_submit_button("Add Experience"):
             if company and role:
-                entry = f"{role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). Responsibilities: {description.replace('\n', ' | ')}"
+                resp_formatted = responsibilities.replace('\n', ' | ').strip()
+                achiev_formatted = achievements.replace('\n', ' | ').strip()
+                
+                desc_parts = []
+                if resp_formatted:
+                    desc_parts.append(f"Responsibilities: {resp_formatted}")
+                if achiev_formatted:
+                    desc_parts.append(f"Achievements: {achiev_formatted}")
+                
+                description_text = ". ".join(desc_parts)
+
+                entry = f"Role: {role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). {description_text}"
                 st.session_state.cv_data['experience'].append(entry)
                 st.success(f"Added: {role} at {company}")
-            else:
-                st.error("Please enter Company Name and Role.")
+            else: st.error("Please enter Company Name and Role.")
+    if st.session_state.cv_data['experience']:
+        st.dataframe(st.session_state.cv_data['experience'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 4. Projects ---
     st.subheader("4. Projects")
     with st.form("projects_form", clear_on_submit=True):
         col_name, col_link = st.columns(2)
-        with col_name:
-            project_name = st.text_input("Project Name", key='proj_name')
-        with col_link:
-            app_link = st.text_input("App/Repo Link", key='proj_link')
-            
+        with col_name: project_name = st.text_input("Project Name", key='proj_name')
+        with col_link: app_link = st.text_input("App/Repo Link", key='proj_link')
         tools = st.text_input("Tools Used (Comma Separated)", key='proj_tools')
         description = st.text_area("Description and Accomplishments", key='proj_desc', height=100)
-            
         if st.form_submit_button("Add Project"):
             if project_name:
-                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {description.replace('\n', ' | ')}"
+                desc_formatted = description.replace('\n', ' | ').strip()
+                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {desc_formatted}"
                 st.session_state.cv_data['projects'].append(entry)
                 st.success(f"Added Project: {project_name}")
-            else:
-                st.error("Please enter Project Name.")
+            else: st.error("Please enter Project Name.")
+    if st.session_state.cv_data['projects']:
+        st.dataframe(st.session_state.cv_data['projects'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 5. Certifications ---
     st.subheader("5. Certifications")
     with st.form("cert_form", clear_on_submit=True):
         col_title, col_by = st.columns(2)
-        with col_title:
-            title = st.text_input("Certificate Title", key='cert_title')
-        with col_by:
-            given_by = st.text_input("Given By (Issuing Body)", key='cert_given_by')
-            
+        with col_title: title = st.text_input("Certificate Title", key='cert_title')
+        with col_by: given_by = st.text_input("Given By (Issuing Body)", key='cert_given_by')
         col_rec, col_date = st.columns(2)
-        with col_rec:
-            received_by = st.text_input("Received By (Your Name)", key='cert_received_by')
-        with col_date:
-            date = st.text_input("Date Received (YYYY-MM-DD)", key='cert_date')
-            
+        with col_rec: received_by = st.text_input("Received By (Your Name)", key='cert_received_by')
+        with col_date: date = st.text_input("Date Received (YYYY-MM-DD)", key='cert_date')
         if st.form_submit_button("Add Certification"):
             if title:
                 entry = f"Certification: {title} from {given_by}. Received by {received_by} on {date}."
                 st.session_state.cv_data['certifications'].append(entry)
                 st.success(f"Added Certification: {title}")
-            else:
-                st.error("Please enter Certificate Title.")
-                
+            else: st.error("Please enter Certificate Title.")
+    if st.session_state.cv_data['certifications']:
+        st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
-    # --- 6. Generate and Preview Text ---
+    # --- 6. Key Responsibilities, Expertise, or Leadership Skills (Renamed) ---
+    st.subheader("6. Key Responsibilities, Expertise, or Leadership Skills")
+    st.session_state.cv_data['strengths_raw'] = st.text_area(
+        "Enter relevant expertise, core competencies, or soft/leadership skills (one per line)",
+        value=st.session_state.cv_data.get('strengths_raw', ''),
+        key='cv_strengths_input',
+        height=150
+    )
+    st.markdown("---")
+
+    # --- 7. Generate and Preview Text ---
     
     def generate_cv_text():
+        """Generates the text/markdown format from all stored session state data."""
         data = st.session_state.cv_data
-        text = f"Candidate Resume Data\n\n"
-        text += f"Name: {data['personal_info']['name']}\n"
-        text += f"Email: {data['personal_info']['email']}\n"
-        text += f"Phone: {data['personal_info']['phone']}\n\n"
+        text = f"# Candidate Resume Data\n\n"
         
-        text += "--- Education ---\n"
-        if data['education']:
-            text += "\n".join(data['education']) + "\n\n"
+        # Personal Info
+        text += f"**Name**: {data['personal_info'].get('name', '')}\n"
+        text += f"**Email**: {data['personal_info'].get('email', '')}\n"
+        text += f"**Phone**: {data['personal_info'].get('phone', '')}\n"
+        if data['personal_info'].get('address'):
+            text += f"**Address**: {data['personal_info']['address']}\n"
+        text += "\n"
         
-        text += "--- Experience ---\n"
-        if data['experience']:
-            text += "\n".join(data['experience']) + "\n\n"
+        # Education
+        text += "## Education\n"
+        if data['education']: text += "* " + "\n* ".join(data['education']) + "\n\n"
+        
+        # Experience
+        text += "## Experience\n"
+        if data['experience']: text += "* " + "\n* ".join(data['experience']) + "\n\n"
             
-        text += "--- Projects ---\n"
-        if data['projects']:
-            text += "\n".join(data['projects']) + "\n\n"
+        # Projects
+        text += "## Projects\n"
+        if data['projects']: text += "* " + "\n* ".join(data['projects']) + "\n\n"
             
-        text += "--- Certifications ---\n"
-        if data['certifications']:
-            text += "\n".join(data['certifications']) + "\n\n"
+        # Certifications
+        text += "## Certifications\n"
+        if data['certifications']: text += "* " + "\n* ".join(data['certifications']) + "\n\n"
+            
+        # Strengths/Skills (Renamed Section)
+        strengths_raw_data = data.get('strengths_raw', '')
+        if strengths_raw_data:
+            strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
+            if strengths_list:
+                text += "## Key Responsibilities, Expertise, or Leadership Skills\n"
+                text += "* " + "\n* ".join(strengths_list) + "\n\n"
             
         return text.strip()
 
-    if st.button("Generate CV Text for Parsing", type="primary", use_container_width=True):
+    if st.button("Generate CV Data for Parsing & Preview", type="primary", use_container_width=True):
         st.session_state.form_cv_text = generate_cv_text()
-        st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
+        st.info("CV Data Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
-    st.markdown("##### Current Generated Text Preview")
+    st.markdown("##### Current Generated Data Preview")
+    
     if st.session_state.form_cv_text:
-        st.text_area(
-            "Generated CV Text",
-            value=st.session_state.form_cv_text,
-            height=300,
-            disabled=True,
-            key='cv_text_preview'
-        )
+        
+        # Generate content for all formats
+        markdown_text = st.session_state.form_cv_text
+        # These functions MUST exist in your application code!
+        json_data = convert_to_json(st.session_state.cv_data) 
+        html_content = convert_to_html_content(st.session_state.cv_data)
+
+        # Create Tabs for viewing
+        tab_md, tab_json, tab_html_pdf = st.tabs(["Markdown (.md)", "JSON (.json)", "HTML/PDF Preview"])
+
+        with tab_md:
+            st.code(markdown_text, language='markdown')
+            st.download_button(
+                label="⬇️ Download Markdown (.md)",
+                data=markdown_text,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+
+        with tab_json:
+            st.json(json_data)
+            st.download_button(
+                label="⬇️ Download JSON (.json)",
+                data=json_data,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+        with tab_html_pdf:
+            st.components.v1.html(html_content, height=400, scrolling=True)
+            st.download_button(
+                label="⬇️ Download HTML (.html)",
+                data=html_content,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.html",
+                mime="text/html",
+                use_container_width=True
+            )
+
     else:
         st.info("No CV text generated yet. Fill out the forms and click the generate button.")
 
     if st.button("🗑️ Clear All Form Data", key="clear_cv_form_data"):
         st.session_state.cv_data = {
-            'personal_info': {'name': '', 'email': '', 'phone': ''},
+            'personal_info': {'name': '', 'email': '', 'phone': '', 'address': ''}, # Added 'address'
             'education': [],
             'experience': [],
             'projects': [],
-            'certifications': []
+            'certifications': [],
+            'strengths_raw': '' 
         }
         st.session_state.form_cv_text = ""
-        st.success("All CV form data cleared.")
         st.rerun()
 
 # --- JD Management Tab Function ---
