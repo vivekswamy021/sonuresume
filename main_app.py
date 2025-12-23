@@ -58,11 +58,15 @@ def initialize_session_state():
     if 'cv_data' not in st.session_state: 
         st.session_state.cv_data = {
             'personal_info': {'name': '', 'email': '', 'phone': ''},
-            'education': [], 'experience': [], 'projects': [],
-            'certifications': [], 'strengths_raw': ''
+            'education': [],
+            'experience': [],
+            'projects': [],
+            'certifications': [],
+            'strengths_raw': ''
         }
-
     if 'form_cv_text' not in st.session_state: st.session_state.form_cv_text = ""
+
+    # Hiring Manager
     if 'hiring_jds' not in st.session_state: st.session_state.hiring_jds = []
 
 # --------------------------------------------------
@@ -102,10 +106,11 @@ def render_profile_sidebar():
 
         st.divider()
 
-        # 3. Links
+        # 3. Professional Links
         st.subheader("🔗 Professional Links")
         new_github = st.text_input("GitHub URL", value=st.session_state.user_profile["github_link"])
         new_linkedin = st.text_input("LinkedIn URL", value=st.session_state.user_profile["linkedin_link"])
+
         if st.button("Save Links"):
             st.session_state.user_profile["github_link"] = new_github
             st.session_state.user_profile["linkedin_link"] = new_linkedin
@@ -116,40 +121,44 @@ def render_profile_sidebar():
         # 4. Change Password
         with st.expander("🔐 Change Password"):
             new_pass = st.text_input("New Password", type="password")
-            confirm_pass = st.text_input("Confirm New Password", type="password")
+            confirm_pass = st.text_input("Confirm Password", type="password")
             if st.button("Update Password"):
-                if new_pass == confirm_pass:
+                if new_pass == confirm_pass and new_pass:
                     st.session_state.user_profile["password"] = new_pass
                     st.success("Password changed!")
                 else:
-                    st.error("Passwords do not match.")
+                    st.error("Passwords mismatch or empty.")
+
+        st.divider()
 
         # --------------------------------------------------
-        # 🚪 LOGOUT BUTTON
+        # 🚪 LOGOUT BUTTON (Added here for all dashboards)
         # --------------------------------------------------
-        st.divider()
         if st.button("🚪 Log Out", type="primary", use_container_width=True):
-            # Clear all session data and reset to login
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
+            # Clear all session data and return to login
+            st.session_state.clear()
             st.rerun()
 
 # --------------------------------------------------
-# PAGES (Login / Signup)
+# LOGIN & SIGNUP PAGES
 # --------------------------------------------------
 def login_page():
     show_logo()
-    st.markdown("""<h1 style='font-size: 32px; font-weight: 700;'>PragyanAI Job Portal</h1>""", unsafe_allow_html=True)
+    st.markdown("<h1>PragyanAI Job Portal</h1>", unsafe_allow_html=True)
     st.subheader("Login")
     col1, col2, col3 = st.columns([1, 2, 1])
+
     with col2:
         with st.form("login_form", clear_on_submit=True):
             role = st.selectbox("Select Role", ["Select Role", "Candidate", "Admin", "Hiring Manager"])
             email = st.text_input("Email", placeholder="Enter email")
             password = st.text_input("Password", type="password", placeholder="Enter password")
             submitted = st.form_submit_button("Login")
+
             if submitted:
-                if role != "Select Role" and email and password:
+                if role == "Select Role" or not email or not password:
+                    st.error("Please fill all fields.")
+                else:
                     user_role = {"Candidate": "candidate", "Admin": "admin", "Hiring Manager": "hiring"}.get(role)
                     st.session_state.logged_in = True
                     st.session_state.user_type = user_role
@@ -157,15 +166,14 @@ def login_page():
                     st.session_state.user_name = email.split("@")[0].capitalize()
                     go_to(f"{user_role}_dashboard")
                     st.rerun()
-                else:
-                    st.error("Please fill all fields and select a role.")
+
         if st.button("Don't have an account? Sign up here"):
             go_to("signup")
             st.rerun()
 
 def signup_page():
     show_logo()
-    st.markdown("""<h1 style='font-size: 30px; font-weight: 700;'>Create an Account</h1>""", unsafe_allow_html=True)
+    st.markdown("<h1>Create an Account</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.form("signup_form"):
@@ -173,13 +181,14 @@ def signup_page():
             email = st.text_input("Email")
             password = st.text_input("Password", type="password")
             confirm = st.text_input("Confirm Password", type="password")
-            if st.form_submit_button("Sign Up"):
+            submitted = st.form_submit_button("Sign Up")
+            if submitted:
                 if password == confirm and email:
-                    st.success(f"Account created for {full_name or email}! Please log in.")
+                    st.success("Account created! Please log in.")
                     go_to("login")
                     st.rerun()
                 else:
-                    st.error("Check your details and passwords.")
+                    st.error("Check passwords/email.")
         if st.button("Already have an account? Login here"):
             go_to("login")
             st.rerun()
